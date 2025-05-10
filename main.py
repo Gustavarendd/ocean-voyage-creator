@@ -16,8 +16,8 @@ from visualization.export import export_path_to_csv, print_route_analysis
 def main():
     # Load and process images
     currents_np, is_water = load_and_process_images(
-        "currents_65N_60S_2700x938.png",
-        "land_mask_90N_90S_6000x3000.png"
+        "./images/currents_65N_60S_2700x938.png",
+        "./images/land_mask_90N_90S_6000x3000.png"
     )
     
     # Extract currents
@@ -61,7 +61,7 @@ def main():
     print_route_analysis(stats)
     
     # Plot results
-    show_water_and_currents(is_water, U, V)
+    # show_water_and_currents(is_water, U, V)
     plot_route(buffered_water, complete_path, complete_direct_path, pixel_waypoints)
 
 if __name__ == "__main__":

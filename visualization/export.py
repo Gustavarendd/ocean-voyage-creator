@@ -4,7 +4,7 @@ import csv
 import math
 from utils.coordinates import pixel_to_latlon
 
-def export_path_to_csv(path_pixels, output_path="route.csv"):
+def export_path_to_csv(path_pixels, output_path="../exports/route.csv"):
     """Export route waypoints to CSV file."""
     with open(output_path, mode="w", newline="") as file:
         writer = csv.writer(file)
