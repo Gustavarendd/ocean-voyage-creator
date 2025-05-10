@@ -29,14 +29,20 @@ class RouteCalculator:
             # Calculate time considering currents
             avg_u, avg_v = get_average_current(x1, y1, x2, y2, self.U, self.V)
             
-            # Get direction vector
-            dx = x2 - x1
+            # Get direction vector, considering dateline crossing
+            dx1 = x2 - x1  # Normal distance
+            dx2 = x2 - x1 - self.U.shape[1]  # Crossing dateline one way
+            dx3 = x2 - x1 + self.U.shape[1]  # Crossing dateline other way
             dy = y2 - y1
+            
+            # Choose the shortest horizontal distance
+            dx = min([dx1, dx2, dx3], key=abs)
             dist = math.hypot(dx, dy)
             if dist > 0:
                 dir_x = dx / dist
                 dir_y = dy / dist
                 
+                # Calculate current effect along the shortest path
                 current_along_path = avg_u * dir_x + avg_v * dir_y
                 net_speed = max(MIN_SPEED, SHIP_SPEED_KN + current_along_path)
                 
@@ -69,10 +75,9 @@ class RouteCalculator:
                 return None, None, None
             
             # Calculate direct path
-            direct_path = self.astar.find_path(start, goal, direct=True)
-            
-            # Update paths and calculate metrics
-            if direct_path:
+            direct_result = self.astar.find_path(start, goal, direct=True)
+            if direct_result:
+                direct_path, direct_duration = direct_result
                 complete_direct_path.extend(direct_path if not complete_direct_path else direct_path[1:])
                 direct_dist, direct_time = self.calculate_route_metrics(direct_path)
                 true_direct_time = sum(

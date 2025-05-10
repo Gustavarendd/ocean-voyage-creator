@@ -2,8 +2,8 @@
 
 import math
 from config import (
-    IMAGE_WIDTH, SHIP_SPEED_KN, MIN_SPEED,
-    ADVERSE_CURRENT_FACTOR, FAVORABLE_CURRENT_BONUS
+    IMAGE_WIDTH, MIN_SPEED,
+    
 )
 
 def compute_travel_time(x1, y1, x2, y2, ship_speed, U, V, direct=False):
@@ -33,19 +33,13 @@ def compute_travel_time(x1, y1, x2, y2, ship_speed, U, V, direct=False):
     # Project current onto movement direction
     current_along_path = avg_u * dir_x + avg_v * dir_y
     
-    if direct:
-        net_speed = ship_speed
-    else:
-        net_speed = calculate_net_speed(ship_speed, current_along_path)
+    net_speed = calculate_net_speed(ship_speed, current_along_path)
     
     if net_speed <= MIN_SPEED:
         return float('inf')
         
     time = dist / net_speed
-    
-    # Apply favorable current bonus
-    if not direct and current_along_path > 0:
-        time *= FAVORABLE_CURRENT_BONUS
+
     
     return time
 
@@ -62,7 +56,6 @@ def calculate_net_speed(ship_speed, current_along_path):
     """Calculate net speed considering current effects."""
     net_speed = ship_speed + current_along_path
     
-    if current_along_path < 0:
-        net_speed *= ADVERSE_CURRENT_FACTOR
+    
     
     return net_speed

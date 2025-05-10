@@ -3,7 +3,7 @@
 import matplotlib.pyplot as plt
 from config import (
     ROUTE_COORDS, COASTAL_BUFFER_NM, SHIP_SPEED_KN,
-    IMAGE_WIDTH, IMAGE_HEIGHT
+
 )
 from core.initialization import load_and_process_images, extract_currents
 from core.mask import create_buffered_water_mask
@@ -51,7 +51,8 @@ def main():
     if complete_path is None:
         print("No complete path found")
         return
-    
+   
+
     # Export routes
     export_path_to_csv(complete_path, "optimized_route.csv")
     export_path_to_csv(complete_direct_path, "direct_route.csv")

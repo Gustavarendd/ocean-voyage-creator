@@ -19,7 +19,14 @@ def latlon_to_pixel(lat, lon):
     if not validate_coordinates(lat, lon):
         raise ValueError(f"Coordinates ({lat}, {lon}) are outside the valid range")
     
-    x = int((lon - LON_MIN) / (LON_MAX - LON_MIN) * IMAGE_WIDTH)
+    # For longitude, ensure we handle dateline crossing by normalizing the longitude
+    normalized_lon = lon
+    if lon > 180:
+        normalized_lon = lon - 360
+    elif lon < -180:
+        normalized_lon = lon + 360
+    
+    x = int((normalized_lon - LON_MIN) / (LON_MAX - LON_MIN) * IMAGE_WIDTH)
     y = int((LAT_MAX - lat) / (LAT_MAX - LAT_MIN) * IMAGE_HEIGHT)
     return x, y
 
@@ -27,4 +34,11 @@ def pixel_to_latlon(x, y):
     """Convert pixel coordinates to latitude/longitude."""
     lon = LON_MIN + x / IMAGE_WIDTH * (LON_MAX - LON_MIN)
     lat = LAT_MAX - y / IMAGE_HEIGHT * (LAT_MAX - LAT_MIN)
+    
+    # Normalize longitude to be in the range [-180, 180]
+    if lon > 180:
+        lon -= 360
+    elif lon < -180:
+        lon += 360
+    
     return lat, lon
