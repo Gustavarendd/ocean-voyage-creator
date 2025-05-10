@@ -25,11 +25,11 @@ COASTAL_BUFFER_NM = 12  # Coastal buffer in nautical miles
 ROUTE_COORDS = [
     #(32, 32), (36, -5),  # Port-Said -> Gibraltar
     #(10, -80), (40, -73.5),  # Panama Canal -> New York
-    #(29.5, -88), (40, -73),  # New Orleans -> New York
+    (29.5, -88), (40, -73),  # New Orleans -> New York
     #(25.5, -80), (40, -73.5),  # Miami -> New York
     #(25.5, 122.5), (58, -148),  # Taiwan -> Alaska
     #(52.12, 3.5), (40, -73.5),  # Rotterdam -> New York
-    (52.12, 3.5), (41.1, -9),  # Rotterdam -> Porto
+    #(52.12, 3.5), (41.1, -9),  # Rotterdam -> Porto
 
     #(30, 170), (30, -170) # cross dateline test
 ]

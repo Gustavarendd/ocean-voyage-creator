@@ -54,8 +54,8 @@ def main():
    
 
     # Export routes
-    export_path_to_csv(complete_path, "optimized_route.csv")
-    export_path_to_csv(complete_direct_path, "direct_route.csv")
+    export_path_to_csv(complete_path, "./exports/optimized_route.csv")
+    export_path_to_csv(complete_direct_path, "./exports/direct_route.csv")
     
     # Print analysis
     print_route_analysis(stats)
