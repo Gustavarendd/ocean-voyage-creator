@@ -25,12 +25,19 @@ def print_route_analysis(stats):
     if math.isinf(stats['direct_time']):
         print("  Duration: Not possible (route crosses land)")
     else:
-        print(f"  Duration (ignoring currents): {stats['true_direct_time']:.1f} hours")
-        print(f"  Duration (with currents): {stats['direct_time']:.1f} hours")
+        print(f"  Duration (ignoring currents/waves): {stats['true_direct_time']:.1f} hours")
+        print(f"  Duration (with currents/waves): {stats['direct_time']:.1f} hours")
     
     print(f"\nOptimized route total:")
     print(f"  Distance: {stats['optimized_dist']:.1f} nautical miles")
     print(f"  Duration: {stats['optimized_time']:.1f} hours")
+    
+    if 'avg_wave_height' in stats:
+        print(f"\nWave conditions (optimized route):")
+        print(f"  Average wave height: {stats['avg_wave_height']:.1f} m")
+        print(f"  Average wave period: {stats['avg_wave_period']:.1f} s")
+        if 'wave_impact' in stats:
+            print(f"  Estimated speed reduction due to waves: {stats['wave_impact']*100:.1f}%")
     
     distance_diff = stats['direct_dist'] - stats['optimized_dist']
     print(f"\nComparison:")

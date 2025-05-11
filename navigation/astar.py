@@ -6,11 +6,12 @@ from config import RADIUS, EXPLORATION_ANGLES
 from utils.currents import compute_travel_time
 
 class AStar:
-    def __init__(self, U, V, buffered_water, ship_speed):
+    def __init__(self, U, V, buffered_water, ship_speed, wave_data=None):
         self.U = U
         self.V = V
         self.buffered_water = buffered_water
         self.ship_speed = ship_speed
+        self.wave_data = wave_data
         self.height, self.width = U.shape
 
     def find_path(self, start, goal, direct=False):
@@ -75,7 +76,8 @@ class AStar:
                         cost = compute_travel_time(
                             current[0], current[1],
                             neighbor[0], neighbor[1],
-                            self.ship_speed, self.U, self.V
+                            self.ship_speed, self.U, self.V,
+                            self.wave_data
                         ) * current_factor
 
                         
@@ -163,7 +165,8 @@ class AStar:
             time = compute_travel_time(
                 current[0], current[1],
                 next_point[0], next_point[1],
-                self.ship_speed, self.U, self.V
+                self.ship_speed, self.U, self.V,
+                self.wave_data
             )
             duration += time
         return duration

@@ -6,8 +6,8 @@ from config import (
     
 )
 
-def compute_travel_time(x1, y1, x2, y2, ship_speed, U, V, direct=False):
-    """Compute travel time between two points considering ocean currents."""
+def compute_travel_time(x1, y1, x2, y2, ship_speed, U, V, wave_data=None, direct=False):
+    """Compute travel time between two points considering ocean currents and waves."""
     # Handle dateline crossing
     dx1 = x2 - x1  # Normal distance
     dx2 = x2 - x1 - IMAGE_WIDTH if x2 > x1 else x2 - x1 + IMAGE_WIDTH  # Across dateline
@@ -33,14 +33,28 @@ def compute_travel_time(x1, y1, x2, y2, ship_speed, U, V, direct=False):
     # Project current onto movement direction
     current_along_path = avg_u * dir_x + avg_v * dir_y
     
-    net_speed = calculate_net_speed(ship_speed, current_along_path)
+    # Get wave data if available
+    if wave_data is not None:
+        wave_height, wave_period, wave_direction = wave_data
+        ship_heading = math.degrees(math.atan2(-dir_y, dir_x))  # Calculate ship heading
+        wave_dir_at_point = wave_direction[y1, x1_wrapped]
+        rel_wave_dir = (float(wave_dir_at_point) - ship_heading) % 360  # Relative wave direction
+        
+        from utils.ship_performance import calculate_net_speed
+        net_speed = calculate_net_speed(
+            ship_speed, 
+            current_along_path,
+            float(wave_height[y1, x1_wrapped]),  # Convert to scalar
+            float(wave_period[y1, x1_wrapped]),  # Convert to scalar
+            rel_wave_dir
+        )
+    else:
+        net_speed = calculate_net_speed(ship_speed, current_along_path)
     
     if net_speed <= MIN_SPEED:
         return float('inf')
         
     time = dist / net_speed
-
-    
     return time
 
 def get_average_current(x1, y1, x2, y2, U, V):
@@ -52,10 +66,11 @@ def get_average_current(x1, y1, x2, y2, U, V):
     
     return (current_u1 + current_u2) / 2, (current_v1 + current_v2) / 2
 
-def calculate_net_speed(ship_speed, current_along_path):
-    """Calculate net speed considering current effects."""
+def calculate_net_speed(ship_speed, current_along_path, wave_height=None, wave_period=None, wave_direction=None):
+    """Calculate net speed considering current and wave effects."""
+    if wave_height is not None and wave_period is not None and wave_direction is not None:
+        from utils.ship_performance import calculate_net_speed as wave_net_speed
+        return wave_net_speed(ship_speed, current_along_path, wave_height, wave_period, wave_direction)
+    
     net_speed = ship_speed + current_along_path
-    
-    
-    
     return net_speed

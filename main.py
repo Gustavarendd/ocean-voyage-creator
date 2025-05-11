@@ -2,10 +2,9 @@
 
 import matplotlib.pyplot as plt
 from config import (
-    ROUTE_COORDS, COASTAL_BUFFER_NM, SHIP_SPEED_KN,
-
+    ROUTE_COORDS, COASTAL_BUFFER_NM, SHIP_OPERATION
 )
-from core.initialization import load_and_process_images, extract_currents
+from core.initialization import load_and_process_images, extract_currents, extract_waves
 from core.mask import create_buffered_water_mask
 from navigation.astar import AStar
 from navigation.route import RouteCalculator
@@ -15,13 +14,17 @@ from visualization.export import export_path_to_csv, print_route_analysis
 
 def main():
     # Load and process images
-    currents_np, is_water = load_and_process_images(
+    currents_np, wave_np, is_water = load_and_process_images(
         "./images/currents_65N_60S_2700x938.png",
-        "./images/land_mask_90N_90S_6000x3000.png"
+        "./images/land_mask_90N_90S_6000x3000.png",
+        "./images/wave_90N_80S_864x409.png"
     )
     
     # Extract currents
     U, V = extract_currents(currents_np)
+
+    # Extract wave data
+    wave_height, wave_period, wave_direction = extract_waves(wave_np)
     
     # Create water mask
     buffered_water = create_buffered_water_mask(is_water, COASTAL_BUFFER_NM)
@@ -41,9 +44,12 @@ def main():
         print(f"Pixels (x, y): {x}, {y}")
         print(f"Is navigable water:", buffered_water[y, x])
     
-    # Initialize pathfinding
-    astar = AStar(U, V, buffered_water, SHIP_SPEED_KN)
-    route_calculator = RouteCalculator(U, V, astar)
+    # Prepare wave data tuple
+    wave_data = (wave_height, wave_period, wave_direction)
+    
+    # Initialize pathfinding with wave data
+    astar = AStar(U, V, buffered_water, SHIP_OPERATION['speed_through_water'], wave_data)
+    route_calculator = RouteCalculator(U, V, astar, wave_data)
     
     # Calculate route
     complete_path, complete_direct_path, stats = route_calculator.optimize_route(pixel_waypoints)

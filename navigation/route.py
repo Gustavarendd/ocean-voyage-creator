@@ -3,14 +3,15 @@
 from utils.coordinates import pixel_to_latlon
 from utils.distance import nm_distance
 from utils.currents import get_average_current
-from config import SHIP_SPEED_KN, MIN_SPEED
+from config import SHIP_OPERATION, MIN_SPEED
 import math
 
 class RouteCalculator:
-    def __init__(self, U, V, astar):
+    def __init__(self, U, V, astar, wave_data=None):
         self.U = U
         self.V = V
         self.astar = astar
+        self.wave_data = wave_data
 
     def calculate_route_metrics(self, path_segment):
         """Calculate distance and time for a route segment."""
@@ -44,8 +45,23 @@ class RouteCalculator:
                 
                 # Calculate current effect along the shortest path
                 current_along_path = avg_u * dir_x + avg_v * dir_y
-                net_speed = max(MIN_SPEED, SHIP_SPEED_KN + current_along_path)
-                
+
+                if self.wave_data is not None:
+                    wave_height, wave_period, wave_direction = self.wave_data
+                    ship_heading = math.degrees(math.atan2(-dir_y, dir_x))
+                    rel_wave_dir = (wave_direction[y1, x1] - ship_heading) % 360
+
+                    from utils.ship_performance import calculate_net_speed
+                    net_speed = calculate_net_speed(
+                        SHIP_OPERATION['speed_through_water'],
+                        current_along_path,
+                        wave_height[y1, x1],
+                        wave_period[y1, x1],
+                        rel_wave_dir
+                    )
+                else:
+                    net_speed = max(MIN_SPEED, SHIP_OPERATION['speed_through_water'] + current_along_path)
+                    
                 sub_segment_time = sub_segment_dist_nm / net_speed
                 segment_time_hours += sub_segment_time
             
@@ -81,7 +97,7 @@ class RouteCalculator:
                 complete_direct_path.extend(direct_path if not complete_direct_path else direct_path[1:])
                 direct_dist, direct_time = self.calculate_route_metrics(direct_path)
                 true_direct_time = sum(
-                    nm_distance(*pixel_to_latlon(x1, y1), *pixel_to_latlon(x2, y2)) / SHIP_SPEED_KN
+                    nm_distance(*pixel_to_latlon(x1, y1), *pixel_to_latlon(x2, y2)) / SHIP_OPERATION['speed_through_water']
                     for (x1, y1), (x2, y2) in zip(direct_path, direct_path[1:])
                 )
                 
