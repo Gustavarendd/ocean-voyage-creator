@@ -15,7 +15,7 @@ def load_and_process_images(currents_path, land_mask_path, wave_path):
     wave_np = np.array(wave_img)
 
     # Calculate crop indices for wave image
-    full_height_wave = 409  # Full height of wave image (90°N to 80°S)
+    full_height_wave = wave_img.height  # Full height of wave image (90°N to 80°S)
     north_limit_px_wave = int((90 - LAT_MAX) / 180 * full_height_wave)  # 65°N
     south_limit_px_wave = int((90 - LAT_MIN) / 180 * full_height_wave)  # 60°S
 
@@ -26,13 +26,14 @@ def load_and_process_images(currents_path, land_mask_path, wave_path):
         Image.Resampling.BILINEAR
     )
     wave_np = np.array(wave_resized)
+    wave_np = pad_wave_image(wave_np, 170, 180)  # Pad the wave image if necessary
     
     # Load and process land mask
     land_mask = Image.open(land_mask_path).convert("L")
     land_mask_np = np.array(land_mask)
     
     # Calculate crop indices for land mask
-    full_height_land = 3000  # Full height of land mask (90°N to 90°S)
+    full_height_land = land_mask.height  # Full height of land mask (90°N to 90°S)
     north_limit_px_land = int((90 - LAT_MAX) / 180 * full_height_land)  # 65°N
     south_limit_px_land = int((90 - LAT_MIN) / 180 * full_height_land)  # 60°S
     
@@ -72,3 +73,16 @@ def scale_channel(channel, min_val, max_val):
     """Scale image channel values to current velocities."""
     return min_val + (channel / 255.0) * (max_val - min_val)
 
+
+def pad_wave_image(wave_np, original_lat_coverage=170, target_lat_coverage=180):
+    original_height = wave_np.shape[0]
+    target_height = int(original_height * (target_lat_coverage / original_lat_coverage))
+    pad_pixels = target_height - original_height
+
+    if pad_pixels > 0:
+        # Pad at the bottom with zeros (black pixels)
+        pad_array = np.zeros((pad_pixels, wave_np.shape[1], wave_np.shape[2]), dtype=wave_np.dtype)
+        wave_np_padded = np.vstack((wave_np, pad_array))
+        return wave_np_padded
+    else:
+        return wave_np  # No padding needed

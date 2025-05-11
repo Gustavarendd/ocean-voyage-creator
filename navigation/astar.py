@@ -6,12 +6,13 @@ from config import RADIUS, EXPLORATION_ANGLES
 from utils.currents import compute_travel_time
 
 class AStar:
-    def __init__(self, U, V, buffered_water, ship_speed, wave_data=None):
+    def __init__(self, U, V, buffered_water, ship_speed, wave_data=None, max_wave_height=None):
         self.U = U
         self.V = V
         self.buffered_water = buffered_water
         self.ship_speed = ship_speed
         self.wave_data = wave_data
+        self.max_wave_height = max_wave_height
         self.height, self.width = U.shape
 
     def find_path(self, start, goal, direct=False):
@@ -110,8 +111,16 @@ class AStar:
             
             wrapped_x = self._wrap_x(new_x)
             
+            # Check if point is within bounds and is water
             if (0 <= new_y < self.height and 
                 self.buffered_water[new_y, wrapped_x]):
+
+                # Check wave height constraint if specified
+                if self.max_wave_height is not None and self.wave_data is not None:
+                    wave_height, _, _ = self.wave_data
+                    if wave_height[new_y, wrapped_x] > self.max_wave_height:
+                        continue  # Skip this neighbor if wave height exceeds limit
+                
                 neighbors.append((wrapped_x, new_y))
         
         return neighbors

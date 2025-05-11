@@ -7,11 +7,12 @@ from config import SHIP_OPERATION, MIN_SPEED
 import math
 
 class RouteCalculator:
-    def __init__(self, U, V, astar, wave_data=None):
+    def __init__(self, U, V, astar, wave_data=None, max_wave_height=None):
         self.U = U
         self.V = V
         self.astar = astar
         self.wave_data = wave_data
+        self.max_wave_height = max_wave_height
 
     def calculate_route_metrics(self, path_segment):
         """Calculate distance and time for a route segment."""
@@ -21,6 +22,12 @@ class RouteCalculator:
         for i in range(len(path_segment) - 1):
             x1, y1 = path_segment[i]
             x2, y2 = path_segment[i + 1]
+            
+            # Check wave height constraint
+            if self.max_wave_height is not None and self.wave_data is not None:
+                wave_height, _, _ = self.wave_data
+                if wave_height[y1, x1] > self.max_wave_height or wave_height[y2, x2] > self.max_wave_height:
+                    return float('inf'), float('inf')
             
             # Convert to lat/lon and calculate distance
             seg_lat1, seg_lon1 = pixel_to_latlon(x1, y1)

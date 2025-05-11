@@ -47,9 +47,12 @@ def main():
     # Prepare wave data tuple
     wave_data = (wave_height, wave_period, wave_direction)
     
-    # Initialize pathfinding with wave data
-    astar = AStar(U, V, buffered_water, SHIP_OPERATION['speed_through_water'], wave_data)
-    route_calculator = RouteCalculator(U, V, astar, wave_data)
+    # Initialize pathfinding with wave data and max wave height constraint
+    max_wave_height = 3  # Example: Avoid areas with wave height > 3m
+    astar = AStar(U, V, buffered_water, SHIP_OPERATION['speed_through_water'], wave_data, max_wave_height)
+    
+    # Initialize route calculator with wave data and max wave height constraint
+    route_calculator = RouteCalculator(U, V, astar, wave_data, max_wave_height=max_wave_height)
     
     # Calculate route
     complete_path, complete_direct_path, stats = route_calculator.optimize_route(pixel_waypoints)
