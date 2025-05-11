@@ -14,19 +14,17 @@ def load_and_process_images(currents_path, land_mask_path, wave_path):
     wave_img = Image.open(wave_path)
     wave_np = np.array(wave_img)
 
+    wave_np = pad_wave_image(wave_np, 170, 180)  # Pad the wave image if necessary
+
     # Calculate crop indices for wave image
-    full_height_wave = wave_img.height  # Full height of wave image (90°N to 80°S)
+    full_height_wave = Image.fromarray(wave_np).height  # Full height of wave image (90°N to 80°S)
     north_limit_px_wave = int((90 - LAT_MAX) / 180 * full_height_wave)  # 65°N
     south_limit_px_wave = int((90 - LAT_MIN) / 180 * full_height_wave)  # 60°S
 
     # Crop and resize wave image
-    wave_cropped = wave_np[north_limit_px_wave:south_limit_px_wave, :]
-    wave_resized = Image.fromarray(wave_cropped).resize(
-        (IMAGE_WIDTH, IMAGE_HEIGHT),
-        Image.Resampling.BILINEAR
-    )
+    wave_np = wave_np[north_limit_px_wave:south_limit_px_wave, :]
+    wave_resized = Image.fromarray(wave_np).resize((IMAGE_WIDTH, IMAGE_HEIGHT), Image.Resampling.NEAREST)
     wave_np = np.array(wave_resized)
-    wave_np = pad_wave_image(wave_np, 170, 180)  # Pad the wave image if necessary
     
     # Load and process land mask
     land_mask = Image.open(land_mask_path).convert("L")

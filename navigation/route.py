@@ -78,7 +78,7 @@ class RouteCalculator:
 
     def optimize_route(self, waypoints):
         """Find optimized path through all waypoints."""
-        complete_path = []
+        complete_optimized_path = []
         complete_direct_path = []
         total_stats = {
             'optimized_dist': 0,
@@ -117,6 +117,8 @@ class RouteCalculator:
             total_stats['optimized_dist'] += opt_dist
             total_stats['optimized_time'] += opt_time
             
-            complete_path.extend(path_segment if not complete_path else path_segment[1:])
+            complete_optimized_path.extend(path_segment if not complete_optimized_path else path_segment[1:])
         
-        return complete_path, complete_direct_path, total_stats
+        return complete_optimized_path, complete_direct_path, total_stats
+
+
