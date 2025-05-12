@@ -13,7 +13,7 @@ LON_MAX = 180.0
 # Navigation parameters
 SHIP_SPEED_KN = 10.0  # ship speed in knots
 RADIUS = 3  # Increase to allow larger steps
-EXPLORATION_ANGLES = 32  # Number of angles to explore
+EXPLORATION_ANGLES = 36  # Number of angles to explore
 
 # Current effect parameters
 MIN_SPEED = 0.01  # Minimum speed to avoid division by zero
