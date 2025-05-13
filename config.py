@@ -27,8 +27,8 @@ SHIP_CONFIG = {
 
 # Ship operation parameters
 SHIP_OPERATION = {
-    "speed_through_water": 24.0,  # ship speed in knots
-    "rpm": 85,                    # Engine RPM
+    "speed_through_water": 15.0,  # ship speed in knots
+    "rpm": 65,                    # Engine RPM
     "trim": 0.5                   # Trim (m)
 }
 

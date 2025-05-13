@@ -79,7 +79,7 @@ def main():
     wave_data = (wave_height, wave_period, wave_direction)
     
     # Initialize pathfinding with wave data and max wave height constraint
-    max_wave_height = 5  # Example: Avoid areas with wave height > 3m
+    max_wave_height = 3  # Example: Avoid areas with wave height > 3m
     astar = AStar(U, V, buffered_water, SHIP_OPERATION['speed_through_water'], wave_data, max_wave_height)
     
     # Initialize route calculator with wave data and max wave height constraint
