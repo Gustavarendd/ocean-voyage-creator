@@ -13,7 +13,7 @@ LON_MAX = 180.0
 
 # Navigation parameters
 RADIUS = 3  # Increase to allow larger steps
-EXPLORATION_ANGLES = 32  # Number of angles to explore
+EXPLORATION_ANGLES = 90  # Number of angles to explore
 
 # Ship characteristics
 SHIP_CONFIG = {
@@ -36,17 +36,17 @@ SHIP_OPERATION = {
 MIN_SPEED = 0.01  # Minimum speed to avoid division by zero
 
 # Coastal parameters
-COASTAL_BUFFER_NM = 12  # Coastal buffer in nautical miles
+COASTAL_BUFFER_NM = 15  # Coastal buffer in nautical miles
 
 # Route coordinates
 ROUTE_COORDS = [
-    #(32, 32), (36, -5),  # Port-Said -> Gibraltar
+    # (32, 32), (36, -5),  # Port-Said -> Gibraltar
     #(10, -80), (40, -73.5),  # Panama Canal -> New York
     (29.5, -88), (40, -73),  # New Orleans -> New York
     #(25.5, -80), (40, -73.5),  # Miami -> New York
     #(25.5, 122.5), (58, -148),  # Taiwan -> Alaska
-    #(52.12, 3.5), (40, -73.5),  # Rotterdam -> New York
-    #(52.12, 3.5), (41.1, -9),  # Rotterdam -> Porto
+    # (52.12, 3.5), (40, -73.5),  # Rotterdam -> New York
+    # (52.12, 3.5), (41.1, -9),  # Rotterdam -> Porto
 
     #(30, 170), (30, -170) # cross dateline test
 ]

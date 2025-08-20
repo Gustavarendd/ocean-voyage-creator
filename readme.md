@@ -5,7 +5,7 @@ Ocean Router is a Python-based tool for optimizing ship routes across oceans. It
 ## Features
 
 - **Currents and Wave Data Integration**: Extracts and processes ocean currents and wave data from input images.
-- **Route Optimization**: Uses the A\* algorithm to find the optimal route, considering:
+- **Route Optimization**: Uses isochrone-based pathfinding to find the optimal route, considering:
   - Ocean currents (U and V components).
   - Wave height, period, and direction.
   - Coastal buffer zones and critical water channels.
@@ -29,12 +29,22 @@ Ocean Router is a Python-based tool for optimizing ship routes across oceans. It
 3. **Route Calculation**:
 
    - Waypoints are converted from latitude/longitude to pixel coordinates.
-   - The A\* algorithm calculates the optimized route, considering currents, waves, and coastal constraints.
+   - The isochrone algorithm propagates time-based wavefronts outward from the starting point, considering currents, waves, and coastal constraints.
+   - The optimal route is found by backtracking through the isochrone field from destination to origin.
    - Metrics such as distance and time are calculated for both direct and optimized routes.
 
 4. **Output**:
    - The optimized and direct routes are exported to CSV files.
    - Visualizations of the routes and ocean data are displayed.
+
+## Isochrone Method
+
+The isochrone method differs from traditional pathfinding algorithms like A*:
+
+- **Time-based propagation**: Instead of exploring individual nodes, it propagates reachable positions at fixed time intervals
+- **Optimal for dynamic environments**: Particularly suited for ocean routing where currents and waves change the effective travel speed
+- **Natural time optimization**: Directly optimizes for minimum travel time rather than distance
+- **Wavefront expansion**: Creates contours of equal travel time (isochrones) from the starting point
 
 ## Installation
 

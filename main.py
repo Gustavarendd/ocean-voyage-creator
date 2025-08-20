@@ -78,12 +78,21 @@ def main():
     # Prepare wave data tuple
     wave_data = (wave_height, wave_period, wave_direction)
     
+    #ASTAR
     # Initialize pathfinding with wave data and max wave height constraint
     max_wave_height = 3  # Example: Avoid areas with wave height > 3m
     astar = AStar(U, V, buffered_water, SHIP_OPERATION['speed_through_water'], wave_data, max_wave_height)
     
     # Initialize route calculator with wave data and max wave height constraint
     route_calculator = RouteCalculator(U, V, astar, wave_data, max_wave_height=max_wave_height)
+
+#Isochrone
+     # Initialize pathfinding with wave data and max wave height constraint
+    # max_wave_height = 10  # Temporarily increase to allow more exploration
+    # isochrone_router = IsochroneRouter(U, V, buffered_water, SHIP_OPERATION['speed_through_water'], wave_data, max_wave_height)
+    
+    # Initialize route calculator with wave data and max wave height constraint
+    # route_calculator = RouteCalculator(U, V, isochrone_router, wave_data, max_wave_height=max_wave_height)
     
     # Calculate route
     complete_optimized_path, complete_direct_path, stats = route_calculator.optimize_route(pixel_waypoints)
@@ -91,23 +100,44 @@ def main():
     # complete_direct_path = enforce_TSS_area_waypoints(complete_direct_path)
 
 
-    if complete_optimized_path is None:
-        print("No complete path found")
-        return
+    # if complete_optimized_path is None:
+    #     print("No complete path found")
+    #     return
    
 
 
     # Export routes
-    export_path_to_csv(complete_optimized_path, "./exports/optimized_route.csv")
+    # export_path_to_csv(complete_optimized_path, "./exports/optimized_route.csv")
     export_path_to_csv(complete_direct_path, "./exports/direct_route.csv")
     
     # Print analysis
-    print_route_analysis(stats)
+    # print_route_analysis(stats)
     
+    # call http://127.0.0.1:8000/tss/correct_geojson with the waypoints for the direct path
+    def export_corrected_geojson():
+        import requests
+        url = "http://127.0.0.1:8000/tss/correct_geojson"
+        waypoints = [(pixel_to_latlon(x, y)) for x, y in complete_direct_path]
+        # Convert waypoints to [{lat: 45, lon: 3}] format
+        latlon_waypoints = [{"lat": lat, "lon": lon} for lat, lon in waypoints]
+
+        response = requests.post(url, json={
+                    "waypoints": latlon_waypoints, 
+                    "max_snap_m": 8000, 
+                    "include_bridging": True, 
+                    "sample_spacing_m": 10,
+                    "multi_clusters": True,
+                    "debug": True})
+        if response.status_code == 200:
+            print("GeoJSON corrected successfully")
+
+  
+    export_corrected_geojson()
+
     # Plot results
-    show_water_and_currents(is_water, U, V)
-    plot_route(wave_np, complete_optimized_path, complete_direct_path, pixel_waypoints)
-    plot_route(buffered_water, complete_optimized_path, complete_direct_path, pixel_waypoints)
+    # show_water_and_currents(is_water, U, V)
+    # plot_route(wave_np, complete_optimized_path, complete_direct_path, pixel_waypoints)
+    # plot_route(buffered_water, complete_optimized_path, complete_direct_path, pixel_waypoints)
 
 if __name__ == "__main__":
     main()

@@ -7,10 +7,10 @@ from config import SHIP_OPERATION, MIN_SPEED
 import math
 
 class RouteCalculator:
-    def __init__(self, U, V, astar, wave_data=None, max_wave_height=None):
+    def __init__(self, U, V, router, wave_data=None, max_wave_height=None):
         self.U = U
         self.V = V
-        self.astar = astar
+        self.router = router
         self.wave_data = wave_data
         self.max_wave_height = max_wave_height
 
@@ -92,32 +92,32 @@ class RouteCalculator:
             start = waypoints[i]
             goal = waypoints[i + 1]
             
-            # Calculate optimized path
-            path_segment = self.astar.find_path(start, goal)
+            # Calculate optimized path using isochrones
+            path_segment = self.router.find_path(start, goal)
             if not path_segment:
                 return None, None, None
             
             # Calculate direct path
-            direct_result = self.astar.find_path(start, goal, direct=True)
+            direct_result = self.router.find_path(start, goal, direct=True)
             if direct_result:
                 direct_path, direct_duration = direct_result
                 complete_direct_path.extend(direct_path if not complete_direct_path else direct_path[1:])
-                direct_dist, direct_time = self.calculate_route_metrics(direct_path)
-                true_direct_time = sum(
-                    nm_distance(*pixel_to_latlon(x1, y1), *pixel_to_latlon(x2, y2)) / SHIP_OPERATION['speed_through_water']
-                    for (x1, y1), (x2, y2) in zip(direct_path, direct_path[1:])
-                )
+                # direct_dist, direct_time = self.calculate_route_metrics(direct_path)
+                # true_direct_time = sum(
+                #     nm_distance(*pixel_to_latlon(x1, y1), *pixel_to_latlon(x2, y2)) / SHIP_OPERATION['speed_through_water']
+                #     for (x1, y1), (x2, y2) in zip(direct_path, direct_path[1:])
+                # )
                 
-                total_stats['direct_dist'] += direct_dist
-                total_stats['direct_time'] += direct_time
-                total_stats['true_direct_time'] += true_direct_time
+                # total_stats['direct_dist'] += direct_dist
+                # total_stats['direct_time'] += direct_time
+                # total_stats['true_direct_time'] += true_direct_time
             
             # Calculate optimized route metrics
-            opt_dist, opt_time = self.calculate_route_metrics(path_segment)
-            total_stats['optimized_dist'] += opt_dist
-            total_stats['optimized_time'] += opt_time
+            # opt_dist, opt_time = self.calculate_route_metrics(path_segment)
+            # total_stats['optimized_dist'] += opt_dist
+            # total_stats['optimized_time'] += opt_time
             
-            complete_optimized_path.extend(path_segment if not complete_optimized_path else path_segment[1:])
+            # complete_optimized_path.extend(path_segment if not complete_optimized_path else path_segment[1:])
         
         return complete_optimized_path, complete_direct_path, total_stats
 
