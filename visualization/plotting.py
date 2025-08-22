@@ -3,24 +3,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_route(buffered_water, complete_path, complete_direct_path, waypoints):
+def plot_route(buffered_water, complete_direct_path):
     """Plot the complete route with waypoints."""
     plt.figure(figsize=(12, 4))
     plt.imshow(buffered_water, cmap='gray')
     
-    if complete_path and complete_direct_path:
-        # Plot optimized route in red
-        px, py = zip(*complete_path)
-        plt.plot(px, py, 'r-', linewidth=2, label='Optimized Route')
-        
-        # Plot direct route in blue
-        dx, dy = zip(*complete_direct_path)
-        plt.plot(dx, dy, 'b--', linewidth=2, label='Direct Route')
-        
-        # Plot waypoints
-        plot_waypoints(waypoints)
-        
-        plt.legend()
+    
     
     plt.title("Ship Route Through Multiple Waypoints Based on Ocean Currents")
     plt.show()
