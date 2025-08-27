@@ -2,15 +2,135 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+import json
+from utils.coordinates import latlon_to_pixel
+
+def plot_route_with_tss(buffered_water, route_path, tss_geojson_path=None, waypoints=None):
+    """Plot route with TSS lanes overlay on buffered water."""
+    fig, ax = plt.subplots(figsize=(16, 8))
+    
+    # Plot buffered water (water=white, land=black)
+    ax.imshow(buffered_water, cmap='gray', alpha=0.7, aspect='auto')
+    
+    # Plot TSS lanes if provided
+    if tss_geojson_path:
+        plot_tss_lanes(ax, tss_geojson_path)
+    
+    # Plot route path
+    if route_path:
+        route_x = [point[0] for point in route_path]
+        route_y = [point[1] for point in route_path]
+        ax.plot(route_x, route_y, 'red', linewidth=3, label='Route', alpha=0.8)
+        
+        # Mark start and end
+        ax.plot(route_x[0], route_y[0], 'go', markersize=10, label='Start')
+        ax.plot(route_x[-1], route_y[-1], 'ro', markersize=10, label='End')
+    
+    # Plot waypoints if provided
+    if waypoints:
+        wp_x = [point[0] for point in waypoints]
+        wp_y = [point[1] for point in waypoints]
+        ax.plot(wp_x, wp_y, 'yo', markersize=8, label='Waypoints')
+        
+        # Number the waypoints
+        for i, (x, y) in enumerate(waypoints):
+            ax.annotate(f'WP{i}', (x, y), xytext=(5, 5), textcoords='offset points',
+                       fontsize=10, color='yellow', weight='bold')
+    
+    ax.set_title("Ocean Route with Traffic Separation Schemes", fontsize=14)
+    ax.legend(loc='upper right')
+    ax.set_xlabel("Longitude (pixels)")
+    ax.set_ylabel("Latitude (pixels)")
+    
+    plt.tight_layout()
+    plt.show()
+
+def plot_tss_lanes(ax, tss_geojson_path):
+    """Plot TSS lanes from GeoJSON file."""
+    try:
+        with open(tss_geojson_path, 'r') as f:
+            data = json.load(f)
+        
+        lane_count = 0
+        separation_count = 0
+        
+        for feature in data['features']:
+            if (feature['type'] == 'Feature' and 
+                'properties' in feature and
+                'parsed_other_tags' in feature['properties']):
+                
+                tags = feature['properties']['parsed_other_tags']
+                seamark_type = tags.get('seamark:type', '')
+                
+                if seamark_type == 'separation_lane':
+                    plot_lane_feature(ax, feature, 'blue', 'TSS Lane', lane_count == 0)
+                    lane_count += 1
+                elif seamark_type in ['separation_line', 'separation_boundary']:
+                    plot_lane_feature(ax, feature, 'purple', 'TSS Boundary', separation_count == 0)
+                    separation_count += 1
+        
+        print(f"Plotted {lane_count} TSS lanes and {separation_count} separation boundaries")
+        
+    except Exception as e:
+        print(f"Error plotting TSS lanes: {e}")
+
+def plot_lane_feature(ax, feature, color, label, show_label):
+    """Plot a single TSS lane feature."""
+    try:
+        geometry = feature['geometry']
+        
+        if geometry['type'] == 'LineString':
+            coordinates = geometry['coordinates']
+            
+            # Convert coordinates to pixels
+            pixel_coords = []
+            for lon, lat in coordinates:
+                try:
+                    x, y = latlon_to_pixel(lat, lon)
+                    pixel_coords.append((x, y))
+                except:
+                    continue  # Skip invalid coordinates
+            
+            if len(pixel_coords) > 1:
+                x_coords = [coord[0] for coord in pixel_coords]
+                y_coords = [coord[1] for coord in pixel_coords]
+                
+                # Plot the line
+                if show_label:
+                    ax.plot(x_coords, y_coords, color=color, linewidth=1, alpha=0.6, label=label)
+                else:
+                    ax.plot(x_coords, y_coords, color=color, linewidth=1, alpha=0.6)
+                
+                # Add arrow to show direction if bearing available
+                properties = feature['properties']
+                if 'tss_flow_bearing_deg' in properties and len(pixel_coords) > 1:
+                    # Add arrow at midpoint
+                    mid_idx = len(pixel_coords) // 2
+                    if mid_idx < len(pixel_coords) - 1:
+                        x1, y1 = pixel_coords[mid_idx]
+                        x2, y2 = pixel_coords[mid_idx + 1]
+                        ax.annotate('', xy=(x2, y2), xytext=(x1, y1),
+                                  arrowprops=dict(arrowstyle='->', color=color, lw=1))
+    
+    except Exception as e:
+        pass  # Skip problematic features
 
 def plot_route(buffered_water, complete_direct_path):
-    """Plot the complete route with waypoints."""
+    """Plot the complete route with waypoints (original function for compatibility)."""
     plt.figure(figsize=(12, 4))
     plt.imshow(buffered_water, cmap='gray')
     
+    if complete_direct_path:
+        route_x = [point[0] for point in complete_direct_path]
+        route_y = [point[1] for point in complete_direct_path]
+        plt.plot(route_x, route_y, 'red', linewidth=2, label='Route')
+        
+        # Mark start and end
+        plt.plot(route_x[0], route_y[0], 'go', markersize=8, label='Start')
+        plt.plot(route_x[-1], route_y[-1], 'ro', markersize=8, label='End')
+        plt.legend()
     
-    
-    plt.title("Ship Route Through Multiple Waypoints Based on Ocean Currents")
+    plt.title("Ship Route Through Multiple Waypoints")
     plt.show()
 
 def plot_waypoints(waypoints):

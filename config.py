@@ -1,6 +1,9 @@
 """Configuration parameters for ocean routing."""
 
 # Image dimensions
+from shapely import Polygon
+
+
 IMAGE_WIDTH = 6000  # Width of the currents image
 IMAGE_HEIGHT = 3000  # Height of the currents image
 
@@ -11,26 +14,29 @@ LON_MIN = -180.0
 LON_MAX = 180.0
 
 # Navigation parameters
-RADIUS = 5  # Increase to allow larger steps
+RADIUS = 3  # Increase to allow larger steps
 EXPLORATION_ANGLES = 90  # Number of angles to explore
 
 # Current effect parameters
 MIN_SPEED = 0.01  # Minimum speed to avoid division by zero
 
 # Coastal parameters
-COASTAL_BUFFER_NM = 15  # Coastal buffer in nautical miles
+COASTAL_BUFFER_NM = 1  # Coastal buffer in nautical miles
 
 # Route coordinates
 ROUTE_COORDS = [
-    (54, 8.5), (36, -10),  # Hamburg -> Gibraltar
+    # (54, 8.5), (36, -6),  # Hamburg -> Gibraltar 
     # (32, 32), (36, -10),  # Port-Said -> Gibraltar
     #(10, -80), (40, -73.5),  # Panama Canal -> New York
     # (29.5, -88), (40, -73),  # New Orleans -> New York
     #(25.5, -80), (40, -73.5),  # Miami -> New York
     #(25.5, 122.5), (58, -148),  # Taiwan -> Alaska
-    #(52.12, 3.5), (40, -73.5),  # Rotterdam -> New York
+    # (52.12, 3.5), (40, -73.5),  # Rotterdam -> New York
     #(52.12, 3.5), (41.1, -9),  # Rotterdam -> Porto
-
+    #(60.0, 26.0), (51.5, -8.0) # St. Petersburg -> Cork
+   
+    (57.5, 11.2), (51.5, -8.0)  # Guthenburg -> Cork
+    
     #(30, 170), (30, -170) # cross dateline test
 ]
 
