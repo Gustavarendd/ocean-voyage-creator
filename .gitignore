@@ -1,7 +1,8 @@
 /TSS
 /TSS_by_direction
-/cache
+cache
 /venv
 __pycache__
 .DS_Store
 /exports
+images

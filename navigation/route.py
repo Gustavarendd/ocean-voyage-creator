@@ -125,6 +125,7 @@ class RouteCalculator:
         # Simplify the path by removing intermediate points on straight lines
         print(f"Original path length: {len(complete_path)} points")
         simplified_path = self.simplify_straight_lines(complete_path)
+        # simplified_path = complete_path
         print(f"Simplified path length: {len(simplified_path)} points")
         print(f"Removed {len(complete_path) - len(simplified_path)} redundant waypoints")
         

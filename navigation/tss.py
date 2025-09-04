@@ -99,61 +99,105 @@ def get_tss_waypoints_near_position(wp, direction_of_travel, max_distance_meters
     else:
         cardinal_direction = "unknown"
     
-    print(f"Direction of travel: {direction_of_travel}° -> Cardinal: {cardinal_direction}")
+    
     
     # Convert meters to nautical miles for distance calculation
     max_distance_nm = max_distance_meters / 1852
     
-    # Load the appropriate GeoJSON file based on cardinal direction
-    geojson_file = f"TSS_by_direction/TSS_Lanes_{cardinal_direction}.geojson"
+    # Determine which directions to check (main direction + two adjacent)
+    directions_to_check = [cardinal_direction]
     
-    if not os.path.exists(geojson_file):
-        print(f"No TSS file found for direction {cardinal_direction}")
-        return None
+    # Add adjacent directions for all cardinal directions
+    # direction_adjacency = {
+    #     "N": ["NW", "NNW", "NNE", "NE"],
+    #     "NNE": ["NNW", "N", "NE", "ENE"],
+    #     "NE": ["N", "NNE", "ENE", "E"],
+    #     "ENE": ["NNE", "NE", "E", "ESE"],
+    #     "E": ["NE", "ENE", "ESE", "SE"],
+    #     "ESE": ["ENE", "E", "SE", "SSE"],
+    #     "SE": ["E", "ESE", "SSE", "S"],
+    #     "SSE": ["ESE", "SE", "S", "SSW"],
+    #     "S": ["SE", "SSE", "SSW", "SW"],
+    #     "SSW": ["SSE", "S", "SW", "WSW"],
+    #     "SW": ["S", "SSW", "WSW", "W"],
+    #     "WSW": ["SSW", "SW", "W", "WNW"],
+    #     "W": ["SW", "WSW", "WNW", "NW"],
+    #     "WNW": ["WSW", "W", "NW", "NNW"],
+    #     "NW": ["W", "WNW", "NNW", "N"],
+    #     "NNW": ["WNW", "NW", "N", "NNE"],
+    # }
+    direction_adjacency = {
+        "N": [ "NNW", "NNE"],
+        "NNE": [ "N", "NE"],
+        "NE": [ "NNE", "ENE"],
+        "ENE": [ "NE", "E"],
+        "E": [ "ENE", "ESE"],
+        "ESE": [ "E", "SE"],
+        "SE": [ "ESE", "SSE"],
+        "SSE": [ "SE", "S"],
+        "S": ["SSE", "SSW"],
+        "SSW": [ "S", "SW"],
+        "SW": [ "SSW", "WSW"],
+        "WSW": [ "SW", "W"],
+        "W": [ "WSW", "WNW"],
+        "WNW": [ "W", "NW"],
+        "NW": [ "WNW", "NNW"],
+        "NNW": [ "NW", "N"],
+    }
     
-    try:
-        with open(geojson_file, 'r') as f:
-            tss_data = json.load(f)
-    except Exception as e:
-        print(f"Error loading TSS file {geojson_file}: {e}")
-        return None
+    if cardinal_direction in direction_adjacency:
+        directions_to_check.extend(direction_adjacency[cardinal_direction])
     
     # Check each TSS lane to see if the waypoint is within the specified distance of the start
     closest_tss = None
     closest_distance = float('inf')
     
-    for feature in tss_data['features']:
-        if feature['geometry']['type'] == 'LineString':
-            coordinates = feature['geometry']['coordinates']
-            if len(coordinates) > 0:
-                # Get the start point of the TSS lane
-                start_point = coordinates[0]  # [lon, lat]
-                start_lat, start_lon = start_point[1], start_point[0]
-                
-                # Calculate distance from waypoint to start of TSS
-                distance_nm = nm_distance(wp[0], wp[1], start_lat, start_lon)
-                
-                if distance_nm <= max_distance_nm and distance_nm < closest_distance:
-                    closest_distance = distance_nm
+    for direction in directions_to_check:
+        # Load the appropriate GeoJSON file based on cardinal direction
+        geojson_file = f"TSS_by_direction/TSS_Lanes_{direction}.geojson"
+        
+        if not os.path.exists(geojson_file):
+            print(f"No TSS file found for direction {direction}")
+            continue
+        
+        try:
+            with open(geojson_file, 'r') as f:
+                tss_data = json.load(f)
+        except Exception as e:
+            print(f"Error loading TSS file {geojson_file}: {e}")
+            continue
+        
+        for feature in tss_data['features']:
+            if feature['geometry']['type'] == 'LineString':
+                coordinates = feature['geometry']['coordinates']
+                if len(coordinates) > 0:
+                    # Get the start point of the TSS lane
+                    start_point = coordinates[0]  # [lon, lat]
+                    start_lat, start_lon = start_point[1], start_point[0]
                     
-                    # Prepare the waypoints (coordinates) of this TSS
-                    waypoints = []
-                    for coord in coordinates:
-                        waypoints.append([coord[1], coord[0]])  # Convert [lon, lat] to [lat, lon]
+                    # Calculate distance from waypoint to start of TSS
+                    distance_nm = nm_distance(wp[0], wp[1], start_lat, start_lon)
                     
-                    closest_tss = {
-                        'waypoints': waypoints,
-                        'properties': feature.get('properties', {}),
-                        'distance_nm': distance_nm,
-                        'distance_m': distance_nm * 1852
-                    }
+                    if distance_nm <= max_distance_nm and distance_nm < closest_distance:
+                        closest_distance = distance_nm
+                        
+                        # Prepare the waypoints (coordinates) of this TSS
+                        waypoints = []
+                        for coord in coordinates:
+                            waypoints.append([coord[1], coord[0]])  # Convert [lon, lat] to [lat, lon]
+                        
+                        closest_tss = {
+                            'waypoints': waypoints,
+                            'properties': feature.get('properties', {}),
+                            'distance_nm': distance_nm,
+                            'distance_m': distance_nm * 1852
+                        }
     
     if closest_tss:
         print(f"Found TSS within {closest_tss['distance_nm']:.2f} nm ({closest_tss['distance_m']:.0f} m) of waypoint")
         print(f"TSS properties: {closest_tss['properties']}")
         return closest_tss
     else:
-        print(f"No TSS found within {max_distance_nm:.2f} nm ({max_distance_meters} m) of waypoint")
         return None
 
 

@@ -1,70 +1,412 @@
-"""A* pathfinding implementation for ocean routing - shortest distance only."""
+"""A* pathfinding implementation for ocean routing - shortest distance only.
+
+Performance optimizations (2025-09):
+ - Numpy arrays for g_score & closed set (O(1) boolean lookup) instead of dict/set of tuples.
+ - Parent pointers stored in int32 arrays (parent_x/parent_y) to avoid large dict for came_from.
+ - Ring offset caching: expensive sin/cos per expansion radius removed; offsets computed once per radius.
+ - Optional heuristic inflation (>1) strongly recommended for speed (slight sub‑optimality acceptable).
+ - Fast TSS mask lookup path retained; on-demand geo fallback unchanged.
+
+Public interface preserved (find_path returns list of (x,y)).
+"""
 
 import heapq
 import math
-from config import RADIUS, EXPLORATION_ANGLES
+from config import RADIUS, EXPLORATION_ANGLES, LAT_MIN, LAT_MAX
+import numpy as np
+try:
+    from core.initialization import ACTIVE_LON_MIN, ACTIVE_LON_MAX
+except Exception:
+    # Fallback to full range so behavior matches original if initialization not run
+    ACTIVE_LON_MIN, ACTIVE_LON_MAX = -180.0, 180.0
+from utils.coordinates import pixel_to_latlon
+from .tss import get_tss_waypoints_near_position
 
 class AStar:
-    def __init__(self, buffered_water):
+    def __init__(self, buffered_water, tss_preference=True, tss_cost_factor=0.1, tss_search_radius_m=10000, tss_mask=None, tss_vecs=None,
+                 pixel_radius: int | None = None, exploration_angles: int | None = None, max_expansions: int | None = None,
+                 heuristic_weight: float = 1.2, disable_pruning: bool = True, use_numpy_core: bool = True):
+        # Core inputs & preferences
         self.buffered_water = buffered_water
         self.height, self.width = buffered_water.shape
+        self.tss_cache = {}
+        self.tss_preference = tss_preference
+        self.tss_cost_factor = tss_cost_factor
+        self.tss_search_radius_m = tss_search_radius_m
+        self.tss_mask = tss_mask
+        self.tss_vecs = tss_vecs
+        self.user_pixel_radius = pixel_radius
+        self.user_exploration_angles = exploration_angles
+        self.max_expansions = max_expansions
+        self.heuristic_weight = max(0.1, heuristic_weight)
+        self.disable_pruning = disable_pruning
+        self.use_numpy_core = use_numpy_core
+
+        # Active geographic bounds (may be cropped)
+        try:  # import inside to honor runtime cropping
+            from core.initialization import (
+                ACTIVE_LAT_MIN, ACTIVE_LAT_MAX, ACTIVE_LON_MIN, ACTIVE_LON_MAX
+            )
+        except Exception:
+            from config import LAT_MIN as ACTIVE_LAT_MIN, LAT_MAX as ACTIVE_LAT_MAX, LON_MIN as ACTIVE_LON_MIN, LON_MAX as ACTIVE_LON_MAX
+        self.ACTIVE_LON_MIN = ACTIVE_LON_MIN
+        self.ACTIVE_LON_MAX = ACTIVE_LON_MAX
+        self.ACTIVE_LAT_MIN = ACTIVE_LAT_MIN
+        self.ACTIVE_LAT_MAX = ACTIVE_LAT_MAX
+
+        self.wrap_longitude = (self.ACTIVE_LON_MAX - self.ACTIVE_LON_MIN) >= 359.0
+
+        # Degrees per pixel for current grid
+        self.dlat_per_px = (self.ACTIVE_LAT_MAX - self.ACTIVE_LAT_MIN) / self.height
+        self.dlon_per_px = (self.ACTIVE_LON_MAX - self.ACTIVE_LON_MIN) / self.width
+        self.mid_lat_rad = math.radians((self.ACTIVE_LAT_MIN + self.ACTIVE_LAT_MAX) / 2.0)
+
+        # Scale exploration radius if grid cropped (so physical distance similar)
+        lon_scale = 360.0 / max(1e-6, (self.ACTIVE_LON_MAX - self.ACTIVE_LON_MIN))
+        lat_scale = (LAT_MAX - LAT_MIN) / max(1e-6, (self.ACTIVE_LAT_MAX - self.ACTIVE_LAT_MIN))
+        scale_factor = max(lon_scale, lat_scale)
+        scaled_radius = max(1, int(round(RADIUS * scale_factor)))
+        if self.user_pixel_radius is not None:
+            scaled_radius = max(1, self.user_pixel_radius)
+        self.pixel_radius = scaled_radius
+
+        self.num_directions = self.user_exploration_angles or EXPLORATION_ANGLES
+        if self.pixel_radius < 2 and self.num_directions > 32:
+            self.num_directions = 32
+
+        # Caches
+        self._ring_cache = {}
+        self._dxdy_unit_cache = {}
+
+        # Numpy structures (optional)
+        if self.use_numpy_core:
+            self._g_score = np.full((self.height, self.width), np.inf, dtype=np.float64)
+            self._closed = np.zeros((self.height, self.width), dtype=bool)
+            self._parent_x = np.full((self.height, self.width), -1, dtype=np.int32)
+            self._parent_y = np.full((self.height, self.width), -1, dtype=np.int32)
+        else:
+            self._g_score = None
 
     def find_path(self, start, goal):
         """Find shortest distance path between start and goal points."""
-        open_set = []
-        heapq.heappush(open_set, (0, start))
-        came_from = {}
-        g_score = {start: 0}
+        import time
+        t0 = time.time()
+
+        if not self.use_numpy_core:
+            # Fallback to previous dict/set implementation if needed
+            open_set = []
+            heapq.heappush(open_set, (0, start))
+            came_from = {}
+            g_score = {start: 0.0}
+            closed = set()
+            expansions = 0
+            while open_set:
+                _, current = heapq.heappop(open_set)
+                if current in closed:
+                    continue
+                if current == goal:
+                    dt = time.time() - t0
+                    print(f"A*: reached goal. expansions={expansions} elapsed={dt:.2f}s")
+                    return self._reconstruct_path_dict(came_from, start, goal)
+                closed.add(current)
+                expansions += 1
+                if self.max_expansions and expansions > self.max_expansions:
+                    print(f"A*: max_expansions {self.max_expansions} reached (fallback core)")
+                    return self._reconstruct_path_dict(came_from, start, current)
+                for neighbor in self._get_neighbors(current, goal):
+                    if neighbor in closed:
+                        continue
+                    dy_px = neighbor[1] - current[1]
+                    if self.wrap_longitude:
+                        dx1 = neighbor[0] - current[0]
+                        dx2 = neighbor[0] - current[0] - self.width
+                        dx3 = neighbor[0] - current[0] + self.width
+                        dx_px = min([dx1, dx2, dx3], key=abs)
+                    else:
+                        dx_px = neighbor[0] - current[0]
+                    dlat_deg = dy_px * self.dlat_per_px
+                    dlon_deg = dx_px * self.dlon_per_px
+                    base_cost = math.hypot(dlat_deg, dlon_deg * math.cos(self.mid_lat_rad))
+                    cost = self._apply_tss_cost_modifier(current, neighbor, base_cost)
+                    tentative_g = g_score[current] + cost
+                    if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                        came_from[neighbor] = current
+                        g_score[neighbor] = tentative_g
+                        f = tentative_g + self.heuristic_weight * self._heuristic(neighbor, goal)
+                        heapq.heappush(open_set, (f, neighbor))
+            return None
+
+        # Optimized numpy core
+        # Reset arrays (cheap) instead of reallocating
+        self._g_score.fill(np.inf)
+        self._closed.fill(False)
+        self._parent_x.fill(-1)
+        self._parent_y.fill(-1)
+
+        sx, sy = start
+        gx, gy = goal
+        if not (0 <= sx < self.width and 0 <= sy < self.height):
+            return None
+        if not (0 <= gx < self.width and 0 <= gy < self.height):
+            return None
+        self._g_score[sy, sx] = 0.0
+
+        open_set = []  # entries: (f, x, y)
+        heapq.heappush(open_set, (0.0, sx, sy))
+
+        expansions = 0
+        cos_mid = math.cos(self.mid_lat_rad)
 
         while open_set:
-            _, current = heapq.heappop(open_set)
-            if current == goal:
-                return self._reconstruct_path(came_from, start, goal)
+            _, cx, cy = heapq.heappop(open_set)
+            if self._closed[cy, cx]:
+                continue
+            if (cx, cy) == (gx, gy):
+                dt = time.time() - t0
+                print(f"A*: reached goal. expansions={expansions} elapsed={dt:.2f}s")
+                return self._reconstruct_path_arrays(start, goal)
+            self._closed[cy, cx] = True
+            expansions += 1
+            if self.max_expansions and expansions > self.max_expansions:
+                print(f"A*: max_expansions {self.max_expansions} reached, partial path returned")
+                return self._reconstruct_path_arrays(start, (cx, cy))
 
-            for neighbor in self._get_neighbors(current):
-                # Calculate cost considering both possible paths across the dateline
-                dx1 = neighbor[0] - current[0]  # Normal distance
-                dx2 = neighbor[0] - current[0] - self.width  # Crossing dateline one way
-                dx3 = neighbor[0] - current[0] + self.width  # Crossing dateline other way
-                dy = neighbor[1] - current[1]
+            for nx, ny in self._get_neighbors((cx, cy), goal):
+                if self._closed[ny, nx]:
+                    continue
+                # Delta respecting wrap
+                if self.wrap_longitude:
+                    dx1 = nx - cx
+                    dx2 = nx - cx - self.width
+                    dx3 = nx - cx + self.width
+                    dx_px = min([dx1, dx2, dx3], key=abs)
+                else:
+                    dx_px = nx - cx
+                dy_px = ny - cy
+                dlat_deg = dy_px * self.dlat_per_px
+                dlon_deg = dx_px * self.dlon_per_px
+                base_cost = math.hypot(dlat_deg, dlon_deg * cos_mid)
+                cost = self._apply_tss_cost_modifier((cx, cy), (nx, ny), base_cost)
+                tentative_g = self._g_score[cy, cx] + cost
+                if tentative_g < self._g_score[ny, nx]:
+                    self._g_score[ny, nx] = tentative_g
+                    self._parent_x[ny, nx] = cx
+                    self._parent_y[ny, nx] = cy
+                    f = tentative_g + self.heuristic_weight * self._heuristic((nx, ny), goal)
+                    heapq.heappush(open_set, (f, nx, ny))
+
+        return None  # no path
+
+    def _apply_tss_cost_modifier(self, current, neighbor, base_cost):
+        """Apply cost modifier for TSS lanes to prefer routing through them."""
+        # Skip if disabled
+        if not self.tss_preference:
+            return base_cost
+
+        # Fast path: precomputed mask + vector lookup
+        if self.tss_mask is not None and self.tss_vecs is not None:
+            nx, ny = neighbor
+            if 0 <= ny < self.height and 0 <= nx < self.width and self.tss_mask[ny, nx]:
+                lane_vec = self.tss_vecs[ny, nx]
+                if not np.allclose(lane_vec, (0.0, 0.0)):
+                    # Ship step vector (pixel space)
+                    dx = nx - current[0]
+                    dy = ny - current[1]
+                    step_len = (dx**2 + dy**2) ** 0.5
+                    if step_len > 0:
+                        step_vec = np.array([dx/step_len, dy/step_len], dtype=np.float32)
+
+                        # Alignment = cosine similarity between lane dir and step dir
+                        align = float(np.dot(step_vec, lane_vec))  # -1..1
+
+                        # If align > 0, we’re going with the lane; < 0 = against
+                        if align > 0.5:      # ~ ≤ 60° difference
+                            return base_cost * self.tss_cost_factor
+                        elif align > 0.0:    # ~ ≤ 90° difference
+                            return base_cost * (1.0 - 0.5*(1-align))  # small bonus
+                        elif align == 0.0:
+                            return base_cost
+                        else:                # > 90° difference
+                            return base_cost * 5  # heavily penalize going against lane
+
+            return base_cost
+
+
+        # Fallback: on-demand geo proximity (slower)
+        try:
+            neighbor_lat, neighbor_lon = pixel_to_latlon(neighbor[0], neighbor[1])
+            current_lat, current_lon = pixel_to_latlon(current[0], current[1])
+            cache_key = (round(neighbor_lat, 4), round(neighbor_lon, 4))
+            if cache_key not in self.tss_cache:
+                direction = self._calculate_bearing(current_lat, current_lon, neighbor_lat, neighbor_lon)
+                tss_result = get_tss_waypoints_near_position([neighbor_lat, neighbor_lon], direction, max_distance_meters=self.tss_search_radius_m)
+                self.tss_cache[cache_key] = tss_result is not None
+            if self.tss_cache[cache_key]:
+                return base_cost * self.tss_cost_factor
+        except Exception:
+            return base_cost
+        return base_cost
+
+    def _integrate_tss_waypoints(self, path):
+        """Check for TSS waypoints along the path and integrate them."""
+        if not path or len(path) < 2:
+            return path
+        
+        enhanced_path = []
+        
+        for i in range(len(path) - 1):
+            current_pixel = path[i]
+            next_pixel = path[i + 1]
+            
+            # Add the current waypoint
+            enhanced_path.append(current_pixel)
+            
+            # Convert pixel coordinates to lat/lon
+            current_lat, current_lon = pixel_to_latlon(current_pixel[0], current_pixel[1])
+            next_lat, next_lon = pixel_to_latlon(next_pixel[0], next_pixel[1])
+            
+            # Calculate direction of travel
+            direction = self._calculate_bearing(current_lat, current_lon, next_lat, next_lon)
+            
+            # Check for TSS waypoints near the current position
+            try:
+                tss_result = get_tss_waypoints_near_position([current_lat, current_lon], direction, max_distance_meters=100000)
                 
-                # Choose the shortest path
-                dx = min([dx1, dx2, dx3], key=abs)
-                cost = math.hypot(dx, dy)
-
-                tentative_g = g_score[current] + cost
-                if neighbor not in g_score or tentative_g < g_score[neighbor]:
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g
-                    f = tentative_g + self._heuristic(neighbor, goal)
-                    heapq.heappush(open_set, (f, neighbor))
-
-        return None
-
-    def _get_neighbors(self, point):
-        """Get valid neighboring points."""
-        neighbors = []
-        radius = RADIUS
-        num_directions = EXPLORATION_ANGLES
+                if tss_result and tss_result['waypoints']:
+                    print(f"Found TSS with {len(tss_result['waypoints'])} waypoints near position ({current_lat:.4f}, {current_lon:.4f})")
+                    
+                    # Convert TSS waypoints back to pixel coordinates and add them
+                    from utils.coordinates import latlon_to_pixel
+                    
+                    for tss_wp in tss_result['waypoints']:
+                        try:
+                            tss_lat, tss_lon = tss_wp[0], tss_wp[1]
+                            tss_x, tss_y = latlon_to_pixel(tss_lat, tss_lon)
+                            
+                            # Wrap x coordinate if necessary
+                            tss_x = self._wrap_x(tss_x)
+                            
+                            # Check if the TSS waypoint is in water
+                            if (0 <= tss_y < self.height and 
+                                self.buffered_water[tss_y, tss_x]):
+                                enhanced_path.append((tss_x, tss_y))
+                        except (ValueError, IndexError) as e:
+                            print(f"Warning: Could not convert TSS waypoint {tss_wp}: {e}")
+                            continue
+                            
+            except Exception as e:
+                print(f"Warning: TSS check failed for position ({current_lat:.4f}, {current_lon:.4f}): {e}")
+                continue
         
-        for i in range(num_directions):
-            angle = 2 * math.pi * i / num_directions
-            dx = int(round(radius * math.cos(angle)))
-            dy = int(round(radius * math.sin(angle)))
-            
-            new_x = point[0] + dx
-            new_y = point[1] + dy
-            
-            wrapped_x = self._wrap_x(new_x)
-            
-            if (0 <= new_y < self.height and 
-                self.buffered_water[new_y, wrapped_x]):
-                neighbors.append((wrapped_x, new_y))
+        # Add the final waypoint
+        if path:
+            enhanced_path.append(path[-1])
         
-        return neighbors
+        return enhanced_path
+
+    def _calculate_bearing(self, lat1, lon1, lat2, lon2):
+        """Calculate the bearing between two lat/lon points in degrees."""
+        lat1_rad = math.radians(lat1)
+        lat2_rad = math.radians(lat2)
+        delta_lon_rad = math.radians(lon2 - lon1)
+        
+        y = math.sin(delta_lon_rad) * math.cos(lat2_rad)
+        x = (math.cos(lat1_rad) * math.sin(lat2_rad) - 
+             math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(delta_lon_rad))
+        
+        bearing_rad = math.atan2(y, x)
+        bearing_deg = (math.degrees(bearing_rad) + 360) % 360
+        
+        return bearing_deg
+    
+    
+
+    def _get_neighbors(self, point, goal=None, max_radius=15, oversample=1.0):
+        """
+        Return neighbor pixels on the *smallest* radius ring that contains any valid neighbor.
+        Grows radius outward (1 px at a time) until at least one neighbor is found,
+        then returns only those neighbors from that ring.
+
+        Args:
+            point: (x, y) pixel
+            goal: optional (x, y) to enable mild directional pruning
+            max_radius: optional hard cap (defaults to image diagonal)
+            oversample: multiplier for angular sampling density as radius grows
+        """
+        width, height = self.width, self.height
+        start_radius = max(1, int(round(self.pixel_radius)))
+
+        # Safety cap so we can't loop forever
+        if max_radius is None:
+            max_radius = int(math.ceil(math.hypot(width, height)))
+
+        # Pruning setup (unchanged from your logic)
+        uxg = uyg = None
+        dir_cos_min = None
+        if (not self.disable_pruning) and goal is not None:
+            gx, gy = goal
+            dxg = gx - point[0]
+            dyg = gy - point[1]
+            if self.wrap_longitude:
+                options = [dxg, dxg - width, dxg + width]
+                dxg = min(options, key=abs)
+            distg = math.hypot(dxg, dyg)
+            if distg > 1e-6:
+                uxg = dxg / distg
+                uyg = dyg / distg
+                max_angle = 120 if distg < 80 else 80
+                dir_cos_min = math.cos(math.radians(max_angle))
+
+        r = start_radius
+        while r <= max_radius:
+            # Retrieve or build ring offsets
+            if r not in self._ring_cache:
+                num_dirs = max(self.num_directions, int(2 * math.pi * r * oversample))
+                offsets = []
+                seen = set()
+                # Precompute integer ring with rounding; duplicates removed
+                cos_vals = [math.cos(2 * math.pi * i / num_dirs) for i in range(num_dirs)]
+                sin_vals = [math.sin(2 * math.pi * i / num_dirs) for i in range(num_dirs)]
+                for c, s in zip(cos_vals, sin_vals):
+                    dx = int(round(r * c))
+                    dy = int(round(r * s))
+                    if (dx, dy) == (0, 0):
+                        continue
+                    if (dx, dy) in seen:
+                        continue
+                    seen.add((dx, dy))
+                    offsets.append((dx, dy))
+                self._ring_cache[r] = offsets
+            offsets = self._ring_cache[r]
+
+            neighbors: list[tuple[int,int]] = []
+            for dx, dy in offsets:
+                if dir_cos_min is not None:
+                    key = (dx, dy)
+                    unit = self._dxdy_unit_cache.get(key)
+                    if unit is None:
+                        mag = math.hypot(dx, dy) or 1.0
+                        unit = (dx / mag, dy / mag)
+                        self._dxdy_unit_cache[key] = unit
+                    ux, uy = unit
+                    if ux * uxg + uy * uyg < dir_cos_min:
+                        continue
+                nx = point[0] + dx
+                ny = point[1] + dy
+                if self.wrap_longitude:
+                    nx = self._wrap_x(nx)
+                if 0 <= nx < width and 0 <= ny < height and self.buffered_water[ny, nx]:
+                    neighbors.append((nx, ny))
+            if neighbors:
+                return neighbors
+            r += 1
+        return []
+
 
     def _wrap_x(self, x):
-        """Wrap x coordinate around the dateline."""
+        """Wrap x coordinate around the dateline (only if wrap_longitude)."""
+        if not self.wrap_longitude:
+            return x  # caller should bounds-check
         while x < 0:
             x += self.width
         while x >= self.width:
@@ -73,23 +415,42 @@ class AStar:
 
     def _heuristic(self, a, b):
         """Calculate heuristic distance between two points."""
-        # Calculate distances in both directions
-        dx1 = b[0] - a[0]  # Normal distance
-        dx2 = b[0] - a[0] - self.width  # Crossing dateline one way
-        dx3 = b[0] - a[0] + self.width  # Crossing dateline other way
-        dy = b[1] - a[1]
-        
-        # Choose the shortest distance
-        dx = min([dx1, dx2, dx3], key=abs)
-        
-        return math.hypot(dx, dy)
+        dy_px = b[1] - a[1]
+        if self.wrap_longitude:
+            dx1 = b[0] - a[0]
+            dx2 = b[0] - a[0] - self.width
+            dx3 = b[0] - a[0] + self.width
+            dx_px = min([dx1, dx2, dx3], key=abs)
+        else:
+            dx_px = b[0] - a[0]
+        dlat_deg = dy_px * self.dlat_per_px
+        dlon_deg = dx_px * self.dlon_per_px
+        return math.hypot(dlat_deg, dlon_deg * math.cos(self.mid_lat_rad))
 
-    def _reconstruct_path(self, came_from, start, goal):
-        """Reconstruct path from came_from dictionary."""
+    # --- Path reconstruction helpers ---
+    def _reconstruct_path_dict(self, came_from, start, goal):
         path = []
-        current = goal
-        while current in came_from:
-            path.append(current)
-            current = came_from[current]
+        cur = goal
+        while cur in came_from:
+            path.append(cur)
+            cur = came_from[cur]
         path.append(start)
         return path[::-1]
+
+    def _reconstruct_path_arrays(self, start, goal):
+        path = []
+        gx, gy = goal
+        if not (0 <= gx < self.width and 0 <= gy < self.height):
+            return []
+        cx, cy = gx, gy
+        path.append((cx, cy))
+        # Follow parents until start or -1
+        while not (cx == start[0] and cy == start[1]):
+            px = self._parent_x[cy, cx]
+            py = self._parent_y[cy, cx]
+            if px < 0 or py < 0:
+                break  # disconnected
+            path.append((px, py))
+            cx, cy = px, py
+        path.reverse()
+        return path

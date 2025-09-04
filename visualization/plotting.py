@@ -4,13 +4,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import json
 from utils.coordinates import latlon_to_pixel
+try:
+    from core.initialization import (
+        ACTIVE_LAT_MIN, ACTIVE_LAT_MAX, ACTIVE_LON_MIN, ACTIVE_LON_MAX
+    )
+except Exception:
+    ACTIVE_LAT_MIN, ACTIVE_LAT_MAX = -90.0, 90.0
+    ACTIVE_LON_MIN, ACTIVE_LON_MAX = -180.0, 180.0
 
-def plot_route_with_tss(buffered_water, route_path, tss_geojson_path=None, waypoints=None):
+def plot_route_with_tss(buffered_water, route_path=None, tss_geojson_path=None, waypoints=None):
     """Plot route with TSS lanes overlay on buffered water."""
     fig, ax = plt.subplots(figsize=(16, 8))
     
     # Plot buffered water (water=white, land=black)
-    ax.imshow(buffered_water, cmap='gray', alpha=0.7, aspect='auto')
+    ax.imshow(buffered_water, cmap='gray', alpha=0.7, aspect='equal')
     
     # Plot TSS lanes if provided
     if tss_geojson_path:
@@ -39,8 +46,11 @@ def plot_route_with_tss(buffered_water, route_path, tss_geojson_path=None, waypo
     
     ax.set_title("Ocean Route with Traffic Separation Schemes", fontsize=14)
     ax.legend(loc='upper right')
-    ax.set_xlabel("Longitude (pixels)")
-    ax.set_ylabel("Latitude (pixels)")
+    ax.set_xlabel("X (pixels)")
+    ax.set_ylabel("Y (pixels)")
+    # Draw active bounds lat/lon annotation for reference
+    ax.text(5, 15, f"Lat {ACTIVE_LAT_MIN} .. {ACTIVE_LAT_MAX}\nLon {ACTIVE_LON_MIN} .. {ACTIVE_LON_MAX}",
+            fontsize=9, color='yellow', ha='left', va='top', bbox=dict(facecolor='black', alpha=0.3, pad=4))
     
     plt.tight_layout()
     plt.show()
@@ -85,11 +95,13 @@ def plot_lane_feature(ax, feature, color, label, show_label):
             # Convert coordinates to pixels
             pixel_coords = []
             for lon, lat in coordinates:
+                if not (ACTIVE_LAT_MIN <= lat <= ACTIVE_LAT_MAX and ACTIVE_LON_MIN <= lon <= ACTIVE_LON_MAX):
+                    continue
                 try:
-                    x, y = latlon_to_pixel(lat, lon)
-                    pixel_coords.append((x, y))
-                except:
-                    continue  # Skip invalid coordinates
+                    x, y = latlon_to_pixel(lat, lon, warn=False)
+                except Exception:
+                    continue
+                pixel_coords.append((x, y))
             
             if len(pixel_coords) > 1:
                 x_coords = [coord[0] for coord in pixel_coords]
