@@ -19,9 +19,11 @@ import json
 from utils.coordinates import get_active_bounds
 
 try:
-    from shapely.geometry import LineString
-except Exception:  # Shapely is already a dependency (used in config) but guard anyway
+    from shapely.geometry import LineString, Polygon, Point  # type: ignore
+except Exception:  # Shapely should be available; keep graceful degradation
     LineString = None
+    Polygon = None
+    Point = None
 
 
 try:
@@ -345,12 +347,17 @@ def _apply_tss_to_mask(
     land_features: list[tuple[dict, bool]] = []  # (feature, feature_make_land)
     water_features: list[tuple[dict, bool]] = []
 
+    debug_counts: dict[str, int] = {}
+
     for feat in features:
         props = feat.get("properties", {})
         seamark_type = None
         parsed = props.get("parsed_other_tags") or {}
         if isinstance(parsed, dict):
             seamark_type = parsed.get("seamark:type")
+        # Fallbacks: direct key, common alternative key, or already extracted tag
+        if not seamark_type:
+            seamark_type = props.get("seamark:type") or props.get("seamark_type")
         if not seamark_type:
             raw = props.get("other_tags", "")
             if "seamark:type" in raw:
@@ -363,9 +370,11 @@ def _apply_tss_to_mask(
         # Evaluate classification
         if seamark_type in land_lane_types:
             land_features.append((feat, make_land))  # usually True
+            debug_counts[seamark_type] = debug_counts.get(seamark_type, 0) + 1
         elif seamark_type in water_lane_types:
             # Always force to water regardless of global make_land
             water_features.append((feat, False))
+            debug_counts[seamark_type] = debug_counts.get(seamark_type, 0) + 1
         else:
             skipped += 1
 
@@ -400,7 +409,34 @@ def _apply_tss_to_mask(
                             is_water[poly_mask] = True
                         drawn += 1
                     except Exception:
+                        # Fallback: draw boundary and attempt manual fill if shapely available
                         _rasterize_line(is_water, coords, to_pixel, lane_pixel_width, feature_make_land, closed=True)
+                        if Polygon is not None and Point is not None:
+                            try:
+                                poly = Polygon(coords)
+                                if poly.is_valid and not poly.is_empty:
+                                    # Compute bounding box in pixel space
+                                    min_lon, min_lat, max_lon, max_lat = poly.bounds[0], poly.bounds[1], poly.bounds[2], poly.bounds[3]
+                                    # Map bounds to pixels (clip)
+                                    x0, y1 = to_pixel(min_lon, min_lat)  # note y is inverted
+                                    x1, y0 = to_pixel(max_lon, max_lat)
+                                    x_min = max(0, min(x0, x1))
+                                    x_max = min(grid_w - 1, max(x0, x1))
+                                    y_min = max(0, min(y0, y1))
+                                    y_max = min(grid_h - 1, max(y0, y1))
+                                    # Precompute inverse mapping factors
+                                    for py in range(y_min, y_max + 1):
+                                        # Pixel center to lat
+                                        lat = lat_max - (py + 0.5) / grid_h * lat_span
+                                        for px in range(x_min, x_max + 1):
+                                            lon = lon_min + (px + 0.5) / grid_w * lon_span
+                                            if poly.contains(Point(lon, lat)):
+                                                if feature_make_land:
+                                                    is_water[py, px] = False
+                                                else:
+                                                    is_water[py, px] = True
+                            except Exception:
+                                pass
                         drawn += 1
                 else:
                     _rasterize_line(is_water, coords, to_pixel, lane_pixel_width, feature_make_land)
@@ -459,8 +495,12 @@ def _apply_tss_to_mask(
     for feat, feature_make_land in water_features:
         rasterize_feature(feat, feature_make_land)
 
+    if debug_counts:
+        summary = ", ".join(f"{k}:{v}" for k, v in sorted(debug_counts.items()))
+    else:
+        summary = "none"
     print(
-        f"TSS overlay: drew {drawn} targeted features (land first, water overrides last); skipped {skipped} others."
+        f"TSS overlay: drew {drawn} targeted features (land first, water overrides last); classified counts [{summary}]; skipped {skipped} others."
     )
     return is_water
 

@@ -98,8 +98,16 @@ def main():
     pixel_waypoints = [nudge_to_water(p, buffered_water) for p in pixel_waypoints]
     
     # Precompute TSS mask (optional dilation_radius widens lane influence)
-    print("\nBuilding TSS mask (this runs once)...")
-    tss_mask = build_tss_mask(buffered_water.shape[1], buffered_water.shape[0], root_dir='.', dilation_radius=1)
+    print("\nBuilding TSS mask (cached)...")
+    tss_mask = build_tss_mask(
+        buffered_water.shape[1],
+        buffered_water.shape[0],
+        root_dir='.',
+        dilation_radius=1,
+        use_cache=True,
+        cache_dir='cache',
+        force_recompute=False,
+    )
 
     # Set pixel search radius for A* (in pixels) that equals about 5 nm
     pixel_radius = int(5 * 1852 / ((40075000 / 360) * abs(((max_lat + 10) - (min_lat - 10)) / buffered_water.shape[0]))) 
@@ -110,13 +118,13 @@ def main():
     astar = AStar(
         buffered_water,
         tss_preference=True,
-        tss_cost_factor=0.5,
-        tss_search_radius_m=25000,
+        tss_cost_factor=1,
+        tss_search_radius_m=15000,
         tss_mask=tss_mask[0],
         tss_vecs=tss_mask[1],
         pixel_radius=pixel_radius,
-        exploration_angles=90,
-        heuristic_weight=1.00,
+        exploration_angles=360,
+        heuristic_weight=1,
         max_expansions=None,
     )
     
@@ -141,7 +149,7 @@ def main():
 
     # Plot results with TSS lanes
     # print("\nGenerating visualization with TSS lanes...")
-    # plot_route_with_tss(buffered_water, None, tss_geojson_path, pixel_waypoints)
+    plot_route_with_tss(buffered_water, None, tss_geojson_path, pixel_waypoints)
 
 if __name__ == "__main__":
     main()

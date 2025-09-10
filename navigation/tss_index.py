@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 import os
 from typing import Iterable, Tuple
+import hashlib
+from datetime import datetime
 
 import numpy as np
 
@@ -96,21 +98,84 @@ def _dilate(mask: np.ndarray, vecs: np.ndarray, radius: int) -> Tuple[np.ndarray
     return dilated, vecs_dilated
 
 
-def build_tss_mask(image_width: int, image_height: int, root_dir: str = '.', dilation_radius: int = 2) -> Tuple[np.ndarray, np.ndarray]:
-    """Build a boolean mask + vector field for TSS lanes.
+def _hash_tss_sources(files: list[str], dilation_radius: int, width: int, height: int) -> str:
+    """Create a stable short hash representing all inputs that affect the mask.
 
-    Returns:
-        mask: np.ndarray[bool] (H,W) → True if pixel lies on/near lane
-        vecs: np.ndarray[float32] (H,W,2) → (u,v) unit vector, (0,0) if none
+    Hash components:
+      - File paths + modified timestamps + file size
+      - MD5 of concatenated file contents (efficient enough for typical file sizes)
+      - Image dimensions & dilation radius
+      - Active geographic bounds (cropping)
     """
-    mask = np.zeros((image_height, image_width), dtype=bool)
-    vecs = np.zeros((image_height, image_width, 2), dtype=np.float32)
+    h = hashlib.md5()
+    meta_parts: list[str] = []
+    for p in sorted(files):
+        try:
+            stat = os.stat(p)
+            meta_parts.append(f"{p}:{int(stat.st_mtime)}:{stat.st_size}")
+        except OSError:
+            meta_parts.append(f"{p}:missing:0")
+    meta_parts.append(f"W{width}H{height}D{dilation_radius}")
+    meta_parts.append(f"LAT{ACTIVE_LAT_MIN:.3f}_{ACTIVE_LAT_MAX:.3f}_LON{ACTIVE_LON_MIN:.3f}_{ACTIVE_LON_MAX:.3f}")
+    meta_blob = "|".join(meta_parts).encode()
+    h.update(meta_blob)
+    # Content hash (optional, only if few files & total size reasonable)
+    for p in sorted(files):
+        try:
+            with open(p, "rb") as f:
+                h.update(f.read())
+        except Exception:
+            continue
+    return h.hexdigest()[:16]
 
+
+def build_tss_mask(
+    image_width: int,
+    image_height: int,
+    root_dir: str = '.',
+    dilation_radius: int = 2,
+    use_cache: bool = True,
+    cache_dir: str = "cache",
+    force_recompute: bool = False,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Build (or load cached) boolean mask + vector field for TSS lanes.
+
+    Args:
+        image_width / image_height: Grid dimensions.
+        root_dir: Project root containing TSS_by_direction.
+        dilation_radius: Pixel radius to dilate lanes.
+        use_cache: Enable disk cache (default True).
+        cache_dir: Directory to store cache .npz.
+        force_recompute: Ignore cache and rebuild.
+    Returns:
+        (mask, vecs)
+    """
     files = list(_iter_tss_files(root_dir))
     if not files:
         print("TSS mask: no TSS_by_direction geojson files found")
-        return mask, vecs
+        return (np.zeros((image_height, image_width), dtype=bool),
+                np.zeros((image_height, image_width, 2), dtype=np.float32))
 
+    os.makedirs(cache_dir, exist_ok=True)
+    hash_id = _hash_tss_sources(files, dilation_radius, image_width, image_height)
+    cache_path = os.path.join(cache_dir, f"tss_mask_{hash_id}.npz")
+
+    if use_cache and not force_recompute and os.path.isfile(cache_path):
+        try:
+            data = np.load(cache_path)
+            mask = data['mask']
+            vecs = data['vecs']
+            if mask.shape == (image_height, image_width) and vecs.shape == (image_height, image_width, 2):
+                print(f"TSS mask: loaded from cache {os.path.basename(cache_path)}")
+                return mask, vecs
+            else:
+                print("TSS mask: cache shape mismatch; recomputing...")
+        except Exception as e:
+            print(f"TSS mask: failed to load cache ({e}); recomputing...")
+
+    # Build from scratch
+    mask = np.zeros((image_height, image_width), dtype=bool)
+    vecs = np.zeros((image_height, image_width, 2), dtype=np.float32)
     count_features = 0
     for path in files:
         try:
@@ -119,15 +184,12 @@ def build_tss_mask(image_width: int, image_height: int, root_dir: str = '.', dil
         except Exception as e:
             print(f"TSS mask: failed to load {path}: {e}")
             continue
-
         for feature in data.get('features', []):
-
             geom = feature.get('geometry', {})
             if geom.get('type') != 'LineString':
                 continue
-            coords = geom.get('coordinates') or []  # list of [lon, lat]
+            coords = geom.get('coordinates') or []
             pixel_coords = []
-
             for lon, lat in coords:
                 if not (ACTIVE_LAT_MIN <= lat <= ACTIVE_LAT_MAX and ACTIVE_LON_MIN <= lon <= ACTIVE_LON_MAX):
                     continue
@@ -145,6 +207,13 @@ def build_tss_mask(image_width: int, image_height: int, root_dir: str = '.', dil
         mask, vecs = _dilate(mask, vecs, dilation_radius)
 
     print(f"TSS mask: rasterized {count_features} lane features across {len(files)} files")
+
+    if use_cache:
+        try:
+            np.savez_compressed(cache_path, mask=mask, vecs=vecs, built=str(datetime.utcnow()))
+            print(f"TSS mask: cached to {cache_path}")
+        except Exception as e:
+            print(f"TSS mask: warning could not write cache ({e})")
     return mask, vecs
 
 

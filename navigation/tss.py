@@ -199,21 +199,6 @@ def get_tss_waypoints_near_position(wp, direction_of_travel, max_distance_meters
     else:
         return None
 
-
-# Example usage:
-if __name__ == "__main__":
-    # Test with a sample waypoint and direction
-    test_wp = [52, 4]  # [lat, lon] - near a TSS in the North Sea
-    test_direction = 355.71  # North direction
-    
-    result = get_tss_waypoints_near_position(test_wp, test_direction)
-    if result:
-        print(f"TSS waypoints found: {len(result['waypoints'])} points")
-        for i, wp in enumerate(result['waypoints']):
-            print(f"  WP {i+1}: {wp}")
-        print(f"Distance: {result['distance_m']:.0f} meters")
-    else:
-        print("No TSS found near the test waypoint")
     
 
 

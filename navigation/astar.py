@@ -23,7 +23,7 @@ from utils.coordinates import pixel_to_latlon
 from .tss import get_tss_waypoints_near_position
 
 class AStar:
-    def __init__(self, buffered_water, tss_preference=True, tss_cost_factor=0.1, tss_search_radius_m=10000, tss_mask=None, tss_vecs=None,
+    def __init__(self, buffered_water, tss_preference=True, tss_cost_factor=0.1, tss_search_radius_m= 25000, tss_mask=None, tss_vecs=None,
                  pixel_radius: int | None = None, exploration_angles: int | None = None, max_expansions: int | None = None,
                  heuristic_weight: float = 1.2, disable_pruning: bool = True, use_numpy_core: bool = True):
         # Core inputs & preferences
@@ -71,8 +71,7 @@ class AStar:
         self.pixel_radius = scaled_radius
 
         self.num_directions = self.user_exploration_angles
-        if self.pixel_radius < 2 and self.num_directions > 32:
-            self.num_directions = 32
+        
 
         # Caches
         self._ring_cache = {}
@@ -234,12 +233,14 @@ class AStar:
                       
 
                         # If align > 0, we’re going with the lane; < 0 = against
-                        if align > 0.75:      # ~ ≤ 40° difference
-                            return base_cost * 0.2
-                        if align > 0.5:      # ~ ≤ 60° difference
-                            return base_cost * 0.5
+                        if align > 0.9:      # ~ ≤ 25° difference
+                            return base_cost * self.tss_cost_factor * 0.2
+                        elif align > 0.75:      # ~ ≤ 40° difference
+                            return base_cost* self.tss_cost_factor * 0.4
+                        elif align > 0.5:      # ~ ≤ 60° difference
+                            return base_cost* self.tss_cost_factor * 0.5
                         elif align > 0.0:    # ~ ≤ 90° difference
-                            return base_cost * (1.0 - 0.5*(1-align))  # small bonus
+                            return base_cost* self.tss_cost_factor * (1.0 - 0.5*(1-align))  # small bonus
                         elif align == 0.0:
                             return base_cost
                         elif align > -0.5:     # ~ ≤ 120° difference
@@ -249,78 +250,6 @@ class AStar:
 
             return base_cost
 
-
-        # Fallback: on-demand geo proximity (slower)
-        try:
-            neighbor_lat, neighbor_lon = pixel_to_latlon(neighbor[0], neighbor[1])
-            current_lat, current_lon = pixel_to_latlon(current[0], current[1])
-            cache_key = (round(neighbor_lat, 4), round(neighbor_lon, 4))
-            if cache_key not in self.tss_cache:
-                direction = self._calculate_bearing(current_lat, current_lon, neighbor_lat, neighbor_lon)
-                tss_result = get_tss_waypoints_near_position([neighbor_lat, neighbor_lon], direction, max_distance_meters=self.tss_search_radius_m)
-                self.tss_cache[cache_key] = tss_result is not None
-            if self.tss_cache[cache_key]:
-                return base_cost * self.tss_cost_factor
-        except Exception:
-            return base_cost
-        return base_cost
-
-    def _integrate_tss_waypoints(self, path):
-        """Check for TSS waypoints along the path and integrate them."""
-        if not path or len(path) < 2:
-            return path
-        
-        enhanced_path = []
-        
-        for i in range(len(path) - 1):
-            current_pixel = path[i]
-            next_pixel = path[i + 1]
-            
-            # Add the current waypoint
-            enhanced_path.append(current_pixel)
-            
-            # Convert pixel coordinates to lat/lon
-            current_lat, current_lon = pixel_to_latlon(current_pixel[0], current_pixel[1])
-            next_lat, next_lon = pixel_to_latlon(next_pixel[0], next_pixel[1])
-            
-            # Calculate direction of travel
-            direction = self._calculate_bearing(current_lat, current_lon, next_lat, next_lon)
-            
-            # Check for TSS waypoints near the current position
-            try:
-                tss_result = get_tss_waypoints_near_position([current_lat, current_lon], direction, max_distance_meters=50000)
-                
-                if tss_result and tss_result['waypoints']:
-                    print(f"Found TSS with {len(tss_result['waypoints'])} waypoints near position ({current_lat:.4f}, {current_lon:.4f})")
-                    
-                    # Convert TSS waypoints back to pixel coordinates and add them
-                    from utils.coordinates import latlon_to_pixel
-                    
-                    for tss_wp in tss_result['waypoints']:
-                        try:
-                            tss_lat, tss_lon = tss_wp[0], tss_wp[1]
-                            tss_x, tss_y = latlon_to_pixel(tss_lat, tss_lon)
-                            
-                            # Wrap x coordinate if necessary
-                            tss_x = self._wrap_x(tss_x)
-                            
-                            # Check if the TSS waypoint is in water
-                            if (0 <= tss_y < self.height and 
-                                self.buffered_water[tss_y, tss_x]):
-                                enhanced_path.append((tss_x, tss_y))
-                        except (ValueError, IndexError) as e:
-                            print(f"Warning: Could not convert TSS waypoint {tss_wp}: {e}")
-                            continue
-                            
-            except Exception as e:
-                print(f"Warning: TSS check failed for position ({current_lat:.4f}, {current_lon:.4f}): {e}")
-                continue
-        
-        # Add the final waypoint
-        if path:
-            enhanced_path.append(path[-1])
-        
-        return enhanced_path
 
     def _calculate_bearing(self, lat1, lon1, lat2, lon2):
         """Calculate the bearing between two lat/lon points in degrees."""
@@ -376,48 +305,48 @@ class AStar:
                 dir_cos_min = math.cos(math.radians(max_angle))
 
         r = start_radius
-        while r <= max_radius:
-            # Retrieve or build ring offsets
-            if r not in self._ring_cache:
-                num_dirs = max(self.num_directions, int(2 * math.pi * r * oversample))
-                offsets = []
-                seen = set()
-                # Precompute integer ring with rounding; duplicates removed
-                cos_vals = [math.cos(2 * math.pi * i / num_dirs) for i in range(num_dirs)]
-                sin_vals = [math.sin(2 * math.pi * i / num_dirs) for i in range(num_dirs)]
-                for c, s in zip(cos_vals, sin_vals):
-                    dx = int(round(r * c))
-                    dy = int(round(r * s))
-                    if (dx, dy) == (0, 0):
-                        continue
-                    if (dx, dy) in seen:
-                        continue
-                    seen.add((dx, dy))
-                    offsets.append((dx, dy))
-                self._ring_cache[r] = offsets
-            offsets = self._ring_cache[r]
+       
+        # Retrieve or build ring offsets
+        if r not in self._ring_cache:
+            num_dirs = max(self.num_directions, int(2 * math.pi * r * oversample))
+            offsets = []
+            seen = set()
+            # Precompute integer ring with rounding; duplicates removed
+            cos_vals = [math.cos(2 * math.pi * i / num_dirs) for i in range(num_dirs)]
+            sin_vals = [math.sin(2 * math.pi * i / num_dirs) for i in range(num_dirs)]
+            for c, s in zip(cos_vals, sin_vals):
+                dx = int(round(r * c))
+                dy = int(round(r * s))
+                if (dx, dy) == (0, 0):
+                    continue
+                if (dx, dy) in seen:
+                    continue
+                seen.add((dx, dy))
+                offsets.append((dx, dy))
+            self._ring_cache[r] = offsets
+        offsets = self._ring_cache[r]
 
-            neighbors: list[tuple[int,int]] = []
-            for dx, dy in offsets:
-                if dir_cos_min is not None:
-                    key = (dx, dy)
-                    unit = self._dxdy_unit_cache.get(key)
-                    if unit is None:
-                        mag = math.hypot(dx, dy) or 1.0
-                        unit = (dx / mag, dy / mag)
-                        self._dxdy_unit_cache[key] = unit
-                    ux, uy = unit
-                    if ux * uxg + uy * uyg < dir_cos_min:
-                        continue
-                nx = point[0] + dx
-                ny = point[1] + dy
-                if self.wrap_longitude:
-                    nx = self._wrap_x(nx)
-                if 0 <= nx < width and 0 <= ny < height and self.buffered_water[ny, nx]:
-                    neighbors.append((nx, ny))
-            if neighbors:
-                return neighbors
-            r += 1
+        neighbors: list[tuple[int,int]] = []
+        for dx, dy in offsets:
+            if dir_cos_min is not None:
+                key = (dx, dy)
+                unit = self._dxdy_unit_cache.get(key)
+                if unit is None:
+                    mag = math.hypot(dx, dy) or 1.0
+                    unit = (dx / mag, dy / mag)
+                    self._dxdy_unit_cache[key] = unit
+                ux, uy = unit
+                if ux * uxg + uy * uyg < dir_cos_min:
+                    continue
+            nx = point[0] + dx
+            ny = point[1] + dy
+            if self.wrap_longitude:
+                nx = self._wrap_x(nx)
+            if 0 <= nx < width and 0 <= ny < height and self.buffered_water[ny, nx]:
+                neighbors.append((nx, ny))
+        if neighbors:
+            return neighbors
+            
         return []
 
 

@@ -21,7 +21,7 @@ EXPLORATION_ANGLES = 90  # Number of angles to explore
 MIN_SPEED = 0.01  # Minimum speed to avoid division by zero
 
 # Coastal parameters
-COASTAL_BUFFER_NM = 10  # Coastal buffer in nautical miles
+COASTAL_BUFFER_NM = 0  # Coastal buffer in nautical miles
 
 # Route coordinates
 ROUTE_COORDS = [
