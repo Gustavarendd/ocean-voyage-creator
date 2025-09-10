@@ -12,7 +12,7 @@ Public interface preserved (find_path returns list of (x,y)).
 
 import heapq
 import math
-from config import RADIUS, EXPLORATION_ANGLES, LAT_MIN, LAT_MAX
+from config import LAT_MIN, LAT_MAX, RADIUS
 import numpy as np
 try:
     from core.initialization import ACTIVE_LON_MIN, ACTIVE_LON_MAX
@@ -70,7 +70,7 @@ class AStar:
             scaled_radius = max(1, self.user_pixel_radius)
         self.pixel_radius = scaled_radius
 
-        self.num_directions = self.user_exploration_angles or EXPLORATION_ANGLES
+        self.num_directions = self.user_exploration_angles
         if self.pixel_radius < 2 and self.num_directions > 32:
             self.num_directions = 32
 
@@ -186,7 +186,7 @@ class AStar:
                 dlat_deg = dy_px * self.dlat_per_px
                 dlon_deg = dx_px * self.dlon_per_px
                 base_cost = math.hypot(dlat_deg, dlon_deg * cos_mid)
-                cost = self._apply_tss_cost_modifier((cx, cy), (nx, ny), base_cost)
+                cost = self._apply_tss_cost_modifier((cx, cy), (nx, ny), base_cost, goal)
                 tentative_g = self._g_score[cy, cx] + cost
                 if tentative_g < self._g_score[ny, nx]:
                     self._g_score[ny, nx] = tentative_g
@@ -197,7 +197,7 @@ class AStar:
 
         return None  # no path
 
-    def _apply_tss_cost_modifier(self, current, neighbor, base_cost):
+    def _apply_tss_cost_modifier(self, current, neighbor, base_cost, goal=None):
         """Apply cost modifier for TSS lanes to prefer routing through them."""
         # Skip if disabled
         if not self.tss_preference:
@@ -216,18 +216,36 @@ class AStar:
                     if step_len > 0:
                         step_vec = np.array([dx/step_len, dy/step_len], dtype=np.float32)
 
-                        # Alignment = cosine similarity between lane dir and step dir
+                        # Heading toward goal (pixel space)
+                        if goal is not None:
+                            gdx = goal[0] - current[0]
+                            gdy = goal[1] - current[1]
+                            goal_len = (gdx**2 + gdy**2) ** 0.5
+                            if goal_len > 0:
+                                goal_vec = np.array([gdx/goal_len, gdy/goal_len], dtype=np.float32)
+                               
+
+
+                        # Alignment = cosine similarity between lane dir and step dir and goal dir                        
+                        # -1 = opposite, 0 = perpendicular, +1 = same direction
                         align = float(np.dot(step_vec, lane_vec))  # -1..1
+                        if goal is not None and goal_len > 0:
+                            align = (align + float(np.dot(goal_vec, lane_vec))) / 2.0
+                      
 
                         # If align > 0, we’re going with the lane; < 0 = against
+                        if align > 0.75:      # ~ ≤ 40° difference
+                            return base_cost * 0.2
                         if align > 0.5:      # ~ ≤ 60° difference
-                            return base_cost * self.tss_cost_factor
+                            return base_cost * 0.5
                         elif align > 0.0:    # ~ ≤ 90° difference
                             return base_cost * (1.0 - 0.5*(1-align))  # small bonus
                         elif align == 0.0:
                             return base_cost
-                        else:                # > 90° difference
-                            return base_cost * 5  # heavily penalize going against lane
+                        elif align > -0.5:     # ~ ≤ 120° difference
+                            return base_cost * 2.0
+                        else:                  # > 120° difference
+                            return base_cost * 10  # heavily penalize going against lane
 
             return base_cost
 
@@ -270,7 +288,7 @@ class AStar:
             
             # Check for TSS waypoints near the current position
             try:
-                tss_result = get_tss_waypoints_near_position([current_lat, current_lon], direction, max_distance_meters=100000)
+                tss_result = get_tss_waypoints_near_position([current_lat, current_lon], direction, max_distance_meters=50000)
                 
                 if tss_result and tss_result['waypoints']:
                     print(f"Found TSS with {len(tss_result['waypoints'])} waypoints near position ({current_lat:.4f}, {current_lon:.4f})")

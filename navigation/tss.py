@@ -194,8 +194,7 @@ def get_tss_waypoints_near_position(wp, direction_of_travel, max_distance_meters
                         }
     
     if closest_tss:
-        print(f"Found TSS within {closest_tss['distance_nm']:.2f} nm ({closest_tss['distance_m']:.0f} m) of waypoint")
-        print(f"TSS properties: {closest_tss['properties']}")
+       
         return closest_tss
     else:
         return None

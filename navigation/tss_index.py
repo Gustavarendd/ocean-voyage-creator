@@ -96,7 +96,7 @@ def _dilate(mask: np.ndarray, vecs: np.ndarray, radius: int) -> Tuple[np.ndarray
     return dilated, vecs_dilated
 
 
-def build_tss_mask(image_width: int, image_height: int, root_dir: str = '.', *, dilation_radius: int = 2):
+def build_tss_mask(image_width: int, image_height: int, root_dir: str = '.', dilation_radius: int = 2) -> Tuple[np.ndarray, np.ndarray]:
     """Build a boolean mask + vector field for TSS lanes.
 
     Returns:
@@ -121,11 +121,13 @@ def build_tss_mask(image_width: int, image_height: int, root_dir: str = '.', *, 
             continue
 
         for feature in data.get('features', []):
+
             geom = feature.get('geometry', {})
             if geom.get('type') != 'LineString':
                 continue
             coords = geom.get('coordinates') or []  # list of [lon, lat]
             pixel_coords = []
+
             for lon, lat in coords:
                 if not (ACTIVE_LAT_MIN <= lat <= ACTIVE_LAT_MAX and ACTIVE_LON_MIN <= lon <= ACTIVE_LON_MAX):
                     continue

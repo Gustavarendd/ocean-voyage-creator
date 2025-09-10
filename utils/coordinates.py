@@ -6,6 +6,8 @@ try:
 except Exception:
     def get_active_bounds():  # fallback
         return LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
+    
+
 
 def validate_coordinates(lat, lon, warn=True):
     """Validate coordinates against the available data range."""

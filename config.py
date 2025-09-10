@@ -4,8 +4,8 @@
 from shapely import Polygon
 
 
-IMAGE_WIDTH = 21600*2  # Width of the currents image
-IMAGE_HEIGHT = 10800*2  # Height of the currents image
+IMAGE_WIDTH = 21600 * 2  # Width of the currents image
+IMAGE_HEIGHT = 10800 * 2  # Height of the currents image
 
 # Latitude and longitude bounds for the currents data
 LAT_MIN = -90.0  # 60°S
