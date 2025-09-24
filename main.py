@@ -5,7 +5,7 @@ from core.initialization import load_and_process_images
 from core.mask import create_buffered_water_mask
 from navigation.astar import AStar
 from navigation.tss_index import build_tss_mask
-import math
+
 
 from navigation.route import RouteCalculator
 from utils.coordinates import latlon_to_pixel, validate_coordinates, pixel_to_latlon
@@ -149,7 +149,7 @@ def main():
 
     # Plot results with TSS lanes
     # print("\nGenerating visualization with TSS lanes...")
-    plot_route_with_tss(buffered_water, None, tss_geojson_path, pixel_waypoints)
+    plot_route_with_tss(buffered_water, complete_path, tss_geojson_path, pixel_waypoints)
 
 if __name__ == "__main__":
     main()

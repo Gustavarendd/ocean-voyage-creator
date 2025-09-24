@@ -6,7 +6,7 @@ def split_tss_by_direction():
     import json
     from collections import defaultdict
 
-    input_geojson = "TSS/separation_lanes_only.geojson"
+    input_geojson = "TSS/separation_lanes_with_direction.geojson"
 
     # Load the GeoJSON file
     with open(input_geojson, 'r') as f:
@@ -17,6 +17,9 @@ def split_tss_by_direction():
 
     # Iterate through features and group by tss_flow_cardinal
     for feature in data['features']:
+        # if it doesn't have tss_flow_cardinal property, skip it
+        if not feature['properties'].get('tss_flow_cardinal'):
+            continue
         direction = feature['properties'].get('tss_flow_cardinal', 'unknown')
         direction_dict[direction].append(feature)
 

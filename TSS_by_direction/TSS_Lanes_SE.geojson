@@ -1,0 +1,1673 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "112284721",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 125.35,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            0.2849838,
+            53.5160824
+          ],
+          [
+            0.3405059,
+            53.4926405
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "129399491",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 126.39,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            20.3558334,
+            59.7423336
+          ],
+          [
+            20.46625,
+            59.7182502
+          ],
+          [
+            20.5193334,
+            59.6815005
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "173232514",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 140.6,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            19.0206426,
+            60.1708584
+          ],
+          [
+            19.0476587,
+            60.1544879
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "173232535",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 140.42,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            19.6749337,
+            59.7745004
+          ],
+          [
+            19.7015507,
+            59.758283
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "173232581",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 139.21,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            19.82025,
+            59.6900011
+          ],
+          [
+            19.8809167,
+            59.6584167
+          ],
+          [
+            19.9869756,
+            59.5922139
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "179582893",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 134.36,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            18.8670051,
+            54.4893467
+          ],
+          [
+            18.8866196,
+            54.4782011
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "179604624",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 130.87,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.514,
+            56.1156671
+          ],
+          [
+            12.56,
+            56.0953755
+          ],
+          [
+            12.6435,
+            56.0530834
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "179619760",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 127.2,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            31.457,
+            70.804343
+          ],
+          [
+            31.6361864,
+            70.7594488
+          ],
+          [
+            31.781,
+            70.7230927
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "179984932",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 133.59,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            5.21925,
+            58.3329208
+          ],
+          [
+            5.28725,
+            58.294838
+          ],
+          [
+            5.3623333,
+            58.2612551
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "180056509",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 137.81,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            33.18025,
+            44.4850006
+          ],
+          [
+            33.1986667,
+            44.4705006
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "180056518",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 138.52,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            33.2120833,
+            44.4598339
+          ],
+          [
+            33.3109167,
+            44.3798883
+          ],
+          [
+            33.40975,
+            44.2998333
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "180056526",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 137.05,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            33.4301667,
+            44.2831667
+          ],
+          [
+            33.4518333,
+            44.2665
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "180539509",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 134.7,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            33.3508333,
+            28.1295835
+          ],
+          [
+            33.4769444,
+            28.0263492
+          ],
+          [
+            33.6030556,
+            27.9230158
+          ],
+          [
+            33.7291667,
+            27.8195836
+          ],
+          [
+            33.8283333,
+            27.7170838
+          ],
+          [
+            33.954375,
+            27.6038092
+          ],
+          [
+            34.0804167,
+            27.4904174
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "180750437",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 136.8,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -9.226,
+            37.0360834
+          ],
+          [
+            -9.20025,
+            36.9340837
+          ],
+          [
+            -9.0886667,
+            36.8367513
+          ],
+          [
+            -8.9626667,
+            36.8115017
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "180750438",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 136.48,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -9.6004167,
+            36.9664169
+          ],
+          [
+            -9.5484167,
+            36.7865011
+          ],
+          [
+            -9.42025,
+            36.6758737
+          ],
+          [
+            -9.2920833,
+            36.565087
+          ],
+          [
+            -9.0658333,
+            36.5140044
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "180750441",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 136.47,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -9.6886667,
+            36.9500002
+          ],
+          [
+            -9.6311667,
+            36.7510011
+          ],
+          [
+            -9.486125,
+            36.6256877
+          ],
+          [
+            -9.3410833,
+            36.5001702
+          ],
+          [
+            -9.09025,
+            36.4434209
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "182075762",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 128.12,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            101.6692243,
+            2.37117
+          ],
+          [
+            101.9688255,
+            2.1361763
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "185734404",
+        "name": "east channel",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 132.97,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -73.6472621,
+            43.460586
+          ],
+          [
+            -73.6461259,
+            43.4597445
+          ],
+          [
+            -73.6447947,
+            43.4589259
+          ],
+          [
+            -73.6441354,
+            43.4585398
+          ],
+          [
+            -73.6435487,
+            43.4581983
+          ],
+          [
+            -73.6427432,
+            43.4576124
+          ],
+          [
+            -73.6420131,
+            43.4570251
+          ],
+          [
+            -73.6414843,
+            43.4566794
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "197417766",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 143.0,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            31.6824536,
+            31.7516667
+          ],
+          [
+            31.7845833,
+            31.6362503
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "197417781",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 135.24,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            31.9746185,
+            31.7295402
+          ],
+          [
+            32.2110448,
+            31.5260682
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "207859977",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 129.25,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            114.2407111,
+            22.2818329
+          ],
+          [
+            114.2584765,
+            22.2703875
+          ],
+          [
+            114.2732269,
+            22.2327271
+          ],
+          [
+            114.2950308,
+            22.2129727
+          ],
+          [
+            114.3355271,
+            22.2101202
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "220138799",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 127.31,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            48.2882476,
+            29.0365899
+          ],
+          [
+            48.3719551,
+            29.0019848
+          ],
+          [
+            48.3857722,
+            28.990721
+          ],
+          [
+            48.4248089,
+            28.9455361
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "231509723",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 138.15,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.6364054,
+            48.019212
+          ],
+          [
+            -122.5864167,
+            47.9604167
+          ],
+          [
+            -122.5099194,
+            47.9245544
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "231509736",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 144.3,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.9686709,
+            48.309939
+          ],
+          [
+            -122.9168932,
+            48.2619534
+          ],
+          [
+            -122.8651156,
+            48.2139227
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "231509752",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 146.06,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.7858219,
+            48.1765732
+          ],
+          [
+            -122.7277026,
+            48.1431725
+          ],
+          [
+            -122.6695833,
+            48.10975
+          ],
+          [
+            -122.648061,
+            48.0398837
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "231509767",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 140.14,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -123.142,
+            48.4584167
+          ],
+          [
+            -123.0773333,
+            48.42075
+          ],
+          [
+            -123.02375,
+            48.3766667
+          ],
+          [
+            -122.9988835,
+            48.3445784
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "231513134",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 133.7,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -123.3835,
+            49.0470836
+          ],
+          [
+            -123.26975,
+            48.975667
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "231513141",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 132.23,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -123.1925,
+            48.930334
+          ],
+          [
+            -123.1095,
+            48.8807508
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "232505245",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 139.96,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -123.3596667,
+            38.1245839
+          ],
+          [
+            -123.17875,
+            37.954667
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "308282110",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 126.75,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.4049636,
+            45.2969897
+          ],
+          [
+            12.4598218,
+            45.2681451
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "308547567",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 144.52,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.9607461,
+            44.7492248
+          ],
+          [
+            13.2181465,
+            44.1833047
+          ],
+          [
+            13.8065458,
+            43.8936977
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "336005483",
+        "z_order": 0,
+        "other_tags": "\"seamark:separation_zone:category\"=>\"not_imo_adopted\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:separation_zone:category": "not_imo_adopted",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 135.36,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            15.9906592,
+            42.339289
+          ],
+          [
+            16.1768186,
+            42.1995051
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "456373406",
+        "name": "La Seine",
+        "waterway": "fairway",
+        "z_order": 0,
+        "other_tags": "\"CEMT\"=>\"Vb\",\"boat\"=>\"yes\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "CEMT": "Vb",
+          "boat": "yes",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 126.99,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.226347,
+            48.830647
+          ],
+          [
+            2.2271079,
+            48.8297848
+          ],
+          [
+            2.2279072,
+            48.8287862
+          ],
+          [
+            2.2282237,
+            48.8283528
+          ],
+          [
+            2.2285214,
+            48.8278972
+          ],
+          [
+            2.2290015,
+            48.8274399
+          ],
+          [
+            2.229909,
+            48.826833
+          ],
+          [
+            2.2323744,
+            48.8256052
+          ],
+          [
+            2.2354925,
+            48.8240115
+          ],
+          [
+            2.2368363,
+            48.8234499
+          ],
+          [
+            2.2380674,
+            48.8230208
+          ],
+          [
+            2.239252,
+            48.822808
+          ],
+          [
+            2.239961,
+            48.8226747
+          ],
+          [
+            2.2415934,
+            48.8226895
+          ],
+          [
+            2.2423802,
+            48.8226966
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "593400589",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 127.21,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.0540625,
+            49.0150077
+          ],
+          [
+            2.0549154,
+            49.0146312
+          ],
+          [
+            2.0551515,
+            49.0145679
+          ],
+          [
+            2.0560741,
+            49.0143779
+          ],
+          [
+            2.0562512,
+            49.0143251
+          ],
+          [
+            2.0564067,
+            49.0142442
+          ],
+          [
+            2.0568619,
+            49.0139058
+          ],
+          [
+            2.0570153,
+            49.0137918
+          ],
+          [
+            2.0580536,
+            49.0130198
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "775411057",
+        "name": "TSS Skagen East",
+        "z_order": 0,
+        "other_tags": "\"seamark:separation_zone:category\"=>\"imo_adopted\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:separation_zone:category": "imo_adopted",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 137.17,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            10.8670905,
+            57.7852528
+          ],
+          [
+            10.8923366,
+            57.7707255
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "775413073",
+        "name": "TSS Fladen",
+        "z_order": 0,
+        "other_tags": "\"seamark:separation_zone:category\"=>\"imo_adopted\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:separation_zone:category": "imo_adopted",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 142.17,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            11.853913,
+            57.2277907
+          ],
+          [
+            11.868141,
+            57.2178695
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "775422871",
+        "name": "TSS Entrance to The Sound",
+        "z_order": 0,
+        "other_tags": "\"seamark:separation_zone:category\"=>\"imo_adopted\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:separation_zone:category": "imo_adopted",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 131.04,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            12.4083231,
+            56.1653767
+          ],
+          [
+            12.4397895,
+            56.1501142
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "803676088",
+        "z_order": 0,
+        "other_tags": "\"seamark:separation_lane:orientation\"=>\"130\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:separation_lane:orientation": "130",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 127.99,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            4.9669302,
+            52.3792147
+          ],
+          [
+            4.9674899,
+            52.3789354
+          ],
+          [
+            4.9682054,
+            52.3786067
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "864611595",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 126.25,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            113.8442162,
+            22.169839
+          ],
+          [
+            113.8896846,
+            22.1389565
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1000411015",
+        "z_order": 0,
+        "other_tags": "\"oneway\"=>\"yes\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "oneway": "yes",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "oneway",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 126.25,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            174.8328653,
+            -41.2794575
+          ],
+          [
+            174.8468984,
+            -41.2871881
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1081620719",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 129.35,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            39.7451012,
+            68.2714208
+          ],
+          [
+            39.7547143,
+            68.2602331
+          ],
+          [
+            39.7718804,
+            68.2505666
+          ],
+          [
+            39.8020928,
+            68.2434413
+          ],
+          [
+            39.8446648,
+            68.2411506
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1081620721",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 129.78,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            39.6290575,
+            68.3008896
+          ],
+          [
+            39.6949754,
+            68.2805705
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1081620727",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 129.8,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            39.9174486,
+            68.2098209
+          ],
+          [
+            40.1522813,
+            68.1368066
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1114898500",
+        "z_order": 0,
+        "other_tags": "\"description\"=>\"Not IMO-Adopted\",\"seamark:type\"=>\"separation_lane\",\"start_date\"=>\"2018-04-01\"",
+        "parsed_other_tags": {
+          "description": "Not IMO-Adopted",
+          "seamark:type": "separation_lane",
+          "start_date": "2018-04-01"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 133.94,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            71.3935,
+            19.9060005
+          ],
+          [
+            71.89025,
+            19.9159172
+          ],
+          [
+            72.3013333,
+            19.7984167
+          ],
+          [
+            72.4045833,
+            19.7196669
+          ],
+          [
+            72.43525,
+            19.65925
+          ],
+          [
+            72.42025,
+            19.397
+          ],
+          [
+            72.4788333,
+            19.04975
+          ],
+          [
+            72.5400833,
+            18.8648333
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1154923577",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 129.34,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -6.2329581,
+            55.364013
+          ],
+          [
+            -6.1111575,
+            55.3499203
+          ],
+          [
+            -5.9880081,
+            55.2495977
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1219554655",
+        "name": "La Seine",
+        "waterway": "fairway",
+        "z_order": 0,
+        "other_tags": "\"CEMT\"=>\"Vb\",\"boat\"=>\"yes\",\"name:br\"=>\"Ar Saena\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "CEMT": "Vb",
+          "boat": "yes",
+          "name:br": "Ar Saena",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 124.24,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.345356,
+            48.857044
+          ],
+          [
+            2.3464588,
+            48.8565502
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1322626506",
+        "name": "Prinsengracht",
+        "waterway": "canal",
+        "z_order": 0,
+        "other_tags": "\"CEMT\"=>\"0\",\"boat\"=>\"yes\",\"name:nl\"=>\"Prinsengracht\",\"name:uk\"=>\"\u041f\u0440\u0438\u043d\u0441\u0435\u043d\u0433\u0440\u0430\u0445\u0442\",\"oneway\"=>\"yes\",\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "CEMT": "0",
+          "boat": "yes",
+          "name:nl": "Prinsengracht",
+          "name:uk": "\u041f\u0440\u0438\u043d\u0441\u0435\u043d\u0433\u0440\u0430\u0445\u0442",
+          "oneway": "yes",
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "oneway",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 126.41,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            4.8826945,
+            52.3662179
+          ],
+          [
+            4.8827893,
+            52.3661752
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": "1342069088",
+        "z_order": 0,
+        "other_tags": "\"seamark:type\"=>\"separation_lane\"",
+        "parsed_other_tags": {
+          "seamark:type": "separation_lane"
+        },
+        "tss_flow_method": "geometry_assumed",
+        "tss_flow_is_forward_along_geometry": true,
+        "tss_flow_bearing_deg": 142.02,
+        "tss_flow_cardinal": "SE"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            18.0425116,
+            46.9109747
+          ],
+          [
+            18.0423863,
+            46.9104064
+          ],
+          [
+            18.0433469,
+            46.9090308
+          ],
+          [
+            18.0445429,
+            46.9083454
+          ],
+          [
+            18.0455681,
+            46.9077293
+          ],
+          [
+            18.046906,
+            46.9069882
+          ],
+          [
+            18.047261,
+            46.9067636
+          ],
+          [
+            18.0474749,
+            46.9066311
+          ]
+        ]
+      }
+    }
+  ]
+}
