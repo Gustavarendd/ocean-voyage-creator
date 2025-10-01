@@ -53,7 +53,7 @@ def main():
     buffered_water = create_buffered_water_mask(
         is_water,
         COASTAL_BUFFER_NM,
-        force_recompute=False,
+        force_recompute=True,
         tss_geojson_path=tss_geojson_path,
         land_lane_types=["separation_zone", "inshore_traffic_zone", "separation_line", "separation_boundary", "area_to_avoid"],
         water_lane_types=["separation_lane"],

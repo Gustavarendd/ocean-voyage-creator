@@ -174,6 +174,7 @@ def create_buffered_water_mask(
             print(f"Warning: Failed to apply TSS lanes before buffering: {e}")
 
     is_water_corrected = preserve_critical_channels(is_water, scaled_critical)
+  
     
     # Create structuring elements
     main_structure = ndimage.iterate_structure(
@@ -183,6 +184,7 @@ def create_buffered_water_mask(
     
     # Create land mask
     land_mask = ~is_water_corrected
+
     labeled_lands, num_features = ndimage.label(land_mask)
     land_sizes = np.bincount(labeled_lands.ravel())
     
