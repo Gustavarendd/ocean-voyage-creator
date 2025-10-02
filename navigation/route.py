@@ -102,7 +102,17 @@ class RouteCalculator:
         return simplified_path
 
     def optimize_route(self, waypoints):
-        """Find shortest distance path through all waypoints."""
+        """Find shortest distance path through all waypoints.
+        
+        Args:
+            waypoints: List of (x, y) pixel coordinate tuples
+            
+        Returns:
+            Tuple of (simplified_path, total_distance, in_tss_lane):
+            - simplified_path: List of (x, y) coordinates
+            - total_distance: Total distance in nautical miles
+            - in_tss_lane: List of booleans indicating if each path point is in a TSS lane
+        """
         complete_path = []
         total_distance = 0
         
@@ -114,7 +124,7 @@ class RouteCalculator:
             path_segment = self.router.find_path(start, goal)
             if not path_segment:
                 print(f"No path found between waypoint {i} and {i + 1}")
-                return None, None
+                return None, None, None
             
             # Add to complete path (avoid duplicating waypoints)
             if not complete_path:
@@ -132,6 +142,37 @@ class RouteCalculator:
         # Calculate total distance using simplified path
         total_distance = self.calculate_route_distance(simplified_path)
         
-        return simplified_path, total_distance
+        # Check which waypoints are in TSS lanes
+        in_tss_lane = self._check_tss_lane_status(simplified_path)
+        
+        return simplified_path, total_distance, in_tss_lane
+    
+    def _check_tss_lane_status(self, path):
+        """Check if each point in the path is within a TSS lane.
+        
+        Args:
+            path: List of (x, y) pixel coordinate tuples
+            
+        Returns:
+            List of booleans, True if point is in a TSS lane, False otherwise
+        """
+        in_tss_lane = []
+        
+        # Check if router has TSS mask available
+        tss_mask = getattr(self.router, 'tss_mask', None)
+        
+        if tss_mask is None:
+            # No TSS mask available, return all False
+            return [False] * len(path)
+        
+        # Check each point in the path
+        for x, y in path:
+            # Ensure coordinates are within bounds
+            if 0 <= y < tss_mask.shape[0] and 0 <= x < tss_mask.shape[1]:
+                in_tss_lane.append(bool(tss_mask[y, x]))
+            else:
+                in_tss_lane.append(False)
+        
+        return in_tss_lane
 
 

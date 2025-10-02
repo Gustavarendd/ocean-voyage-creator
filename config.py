@@ -4,8 +4,8 @@
 from shapely import Polygon
 
 
-IMAGE_WIDTH = 21600  # Width of the currents image
-IMAGE_HEIGHT = 10800   # Height of the currents image
+IMAGE_WIDTH = 21600 * 2 # Width of the currents image
+IMAGE_HEIGHT = 10800 * 2 # Height of the currents image
 
 # Latitude and longitude bounds for the currents data
 LAT_MIN = -90.0  # 60°S
@@ -21,11 +21,11 @@ EXPLORATION_ANGLES = 90  # Number of angles to explore
 MIN_SPEED = 0.01  # Minimum speed to avoid division by zero
 
 # Coastal parameters
-COASTAL_BUFFER_NM = 0  # Coastal buffer in nautical miles
+COASTAL_BUFFER_NM = 2  # Coastal buffer in nautical miles
 
 # Route coordinates
 ROUTE_COORDS = [
-    (54.1, 8.5), (36, -6),  # Hamburg -> Gibraltar 
+    # (54.1, 8.5), (36, -6),  # Hamburg -> Gibraltar 
     # (32, 32), (36, -4),  # Port-Said -> Gibraltar
     #(10, -80), (40, -73.5),  # Panama Canal -> New York
     # (29.5, -88), (40, -73),  # New Orleans -> New York
@@ -33,7 +33,8 @@ ROUTE_COORDS = [
     #(25.5, 122.5), (58, -148),  # Taiwan -> Alaska
     # (52.12, 3.5), (40, -73.5),  # Rotterdam -> New York
     # (52.12, 3.5), (41.1, -9),  # Rotterdam -> Porto
-    # (60.0, 26.0), (51.5, -8.0) # St. Petersburg -> Cork
+    #(60.0, 26.0), (51.5, -8.0) # St. Petersburg -> Cork
+    (51.5, -8.0), (60.0, 26.0) # Cork -> St. Petersburg
    
     # (57.5, 11.2), (51.5, -8.0)  # Guthenburg -> Cork
     # (64.83805979142075, 39.87918005420811), (41.1, -9) # Murmansk -> Porto

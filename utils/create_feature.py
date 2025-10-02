@@ -4,7 +4,7 @@ import sys
 
 def csv_to_linestring_feature(
     csv_path: str = "../CSV_features/waypoints.csv",
-    osm_id: str = "8",
+    osm_id: str = "11",
     z_order: int = 0,
     other_tags: str = r"\"seamark:type\"=>\"area_to_avoid\"",
     allow_single_point: bool = True,

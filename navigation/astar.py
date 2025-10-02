@@ -23,8 +23,8 @@ from utils.coordinates import pixel_to_latlon
 from .tss import get_tss_waypoints_near_position
 
 class AStar:
-    def __init__(self, buffered_water, tss_preference=True, tss_cost_factor=0.1, tss_search_radius_m= 25000, tss_mask=None, tss_vecs=None,
-                 pixel_radius: int | None = None, exploration_angles: int | None = None, max_expansions: int | None = None,
+    def __init__(self, buffered_water, tss_preference=True, tss_cost_factor=1.0, tss_mask=None, tss_vecs=None,
+                 no_go_mask=None, pixel_radius: int | None = None, exploration_angles: int | None = None, max_expansions: int | None = None,
                  heuristic_weight: float = 1.2, disable_pruning: bool = True, use_numpy_core: bool = True):
         # Core inputs & preferences
         self.buffered_water = buffered_water
@@ -32,9 +32,10 @@ class AStar:
         self.tss_cache = {}
         self.tss_preference = tss_preference
         self.tss_cost_factor = tss_cost_factor
-        self.tss_search_radius_m = tss_search_radius_m
+      
         self.tss_mask = tss_mask
         self.tss_vecs = tss_vecs
+        self.no_go_mask = no_go_mask  # Mask for areas to avoid (obstacles)
         self.user_pixel_radius = pixel_radius
         self.user_exploration_angles = exploration_angles
         self.max_expansions = max_expansions
@@ -86,13 +87,38 @@ class AStar:
         else:
             self._g_score = None
 
-    def find_path(self, start, goal):
+    def find_path(self, start, goal, step_length = None, tss_cost_factor = None):
         """Find shortest distance path between start and goal points."""
         import time
         t0 = time.time()
 
+        if step_length is not None:
+            if step_length < 1:
+                step_length = 1
+            elif step_length > self.pixel_radius:
+                step_length = self.pixel_radius
+            self.pixel_radius = step_length
+        
+        if tss_cost_factor is not None:
+            if tss_cost_factor < 0.01:
+                tss_cost_factor = 0.01
+            elif tss_cost_factor > 1.0:
+                tss_cost_factor = 1.0
+            self.tss_cost_factor = tss_cost_factor
+
         if not self.use_numpy_core:
             # Fallback to previous dict/set implementation if needed
+            # Check if start or goal are in no-go areas
+            if self.no_go_mask is not None:
+                sx, sy = start
+                gx, gy = goal
+                if self.no_go_mask[sy, sx]:
+                    print(f"A*: WARNING - start point {start} is in a no-go area!")
+                    return None
+                if self.no_go_mask[gy, gx]:
+                    print(f"A*: WARNING - goal point {goal} is in a no-go area!")
+                    return None
+            
             open_set = []
             heapq.heappush(open_set, (0, start))
             came_from = {}
@@ -148,6 +174,16 @@ class AStar:
             return None
         if not (0 <= gx < self.width and 0 <= gy < self.height):
             return None
+        
+        # Check if start or goal are in no-go areas
+        if self.no_go_mask is not None:
+            if self.no_go_mask[sy, sx]:
+                print(f"A*: WARNING - start point ({sx}, {sy}) is in a no-go area!")
+                return None
+            if self.no_go_mask[gy, gx]:
+                print(f"A*: WARNING - goal point ({gx}, {gy}) is in a no-go area!")
+                return None
+        
         self._g_score[sy, sx] = 0.0
 
         open_set = []  # entries: (f, x, y)
@@ -234,18 +270,20 @@ class AStar:
 
                         # If align > 0, we’re going with the lane; < 0 = against
                         if align > 0.9:      # ~ ≤ 25° difference
-                            return base_cost * self.tss_cost_factor * 0.5
+                            return base_cost * self.tss_cost_factor * 0.6
                         elif align > 0.75:      # ~ ≤ 40° difference
-                            return base_cost* self.tss_cost_factor * 0.5
+                            return base_cost* self.tss_cost_factor * 0.7
                         elif align > 0.5:      # ~ ≤ 60° difference
-                            return base_cost* self.tss_cost_factor * 0.5
+                            return base_cost* self.tss_cost_factor * 0.7
                         elif align > 0.0:    # ~ ≤ 90° difference
-                            return base_cost* self.tss_cost_factor * 0.5
+                            return base_cost* self.tss_cost_factor * 0.7
                             #return base_cost* self.tss_cost_factor * (1.0 - 0.5*(1-align))  # small bonus
-                        elif align == 0.0:
-                            return base_cost
+                        elif align == 0.0:   # perpendicular
+                            return base_cost * 0.8
+                        elif align > -0.2:     # ~ ≤ 100° difference
+                            return base_cost * 0.9
                         elif align > -0.5:     # ~ ≤ 120° difference
-                            return base_cost * 2.0
+                            return base_cost * 0.95
                         else:                  # > 120° difference
                             return base_cost * 10  # heavily penalize going against lane
 
@@ -302,7 +340,7 @@ class AStar:
             if distg > 1e-6:
                 uxg = dxg / distg
                 uyg = dyg / distg
-                max_angle = 120 if distg < 80 else 80
+                max_angle = 120 if distg < 80 else 100
                 dir_cos_min = math.cos(math.radians(max_angle))
 
         r = start_radius
@@ -347,7 +385,12 @@ class AStar:
             ny = point[1] + dy
             if self.wrap_longitude:
                 nx = self._wrap_x(nx)
-            if 0 <= nx < width and 0 <= ny < height and self.buffered_water[ny, nx]:
+            # Check bounds, water availability, and no-go areas unless in a tss lane
+
+            if 0 <= nx < width and 0 <= ny < height and (self.buffered_water[ny, nx] or (self.tss_mask is not None and self.tss_mask[ny, nx])):
+                # Skip if this pixel is marked as a no-go area
+                if self.no_go_mask is not None and self.no_go_mask[ny, nx]:
+                    continue
                 neighbors.append((nx, ny))
         if neighbors:
             return neighbors

@@ -4,13 +4,14 @@ from config import ROUTE_COORDS, COASTAL_BUFFER_NM, IMAGE_WIDTH, IMAGE_HEIGHT
 from core.initialization import load_and_process_divided_image, load_and_process_image
 from core.mask import create_buffered_water_mask
 from navigation.astar import AStar
-from navigation.tss_index import build_tss_mask
+from navigation.tss_index import build_tss_mask, build_tss_combined_mask
 
 
 from navigation.route import RouteCalculator
 from utils.coordinates import latlon_to_pixel, validate_coordinates, pixel_to_latlon
 from visualization.export import export_path_to_csv
 from visualization.plotting import plot_route, plot_route_with_tss
+from export_tss_analysis import export_tss_analysis, print_tss_segments
 
 def main():
 
@@ -50,19 +51,35 @@ def main():
          max_lat=max_lat + 10, min_lat=min_lat - 10, max_lon=max_lon + 10, min_lon=min_lon - 10
     )
     
-    # Create water mask, converting separation zones into land so routing avoids them.
-    # Set force_recompute=True the first time after introducing this feature so cache updates.
-    tss_geojson_path = "./TSS/separation_lanes_with_direction.geojson"
+
+    # Precompute TSS combined mask (separation lanes + no-go areas)
+    print("\nBuilding TSS combined mask (cached)...")
+    lanes_mask, lanes_vecs, no_go_mask = build_tss_combined_mask(
+        IMAGE_WIDTH,
+        IMAGE_HEIGHT,
+        root_dir='.',
+        dilation_radius=0,        # Widen separation lanes slightly
+        no_go_dilation=0,         # Widen no-go areas for safety
+        supersample_factor=1,     # 2x higher resolution for TSS features
+        use_cache=True,
+        cache_dir='cache',
+        force_recompute=False,
+    )
+
+    # Create water mask with TSS lanes integrated
+    # PERFORMANCE FIX: Use pre-computed tss_lanes instead of slow GeoJSON processing
+    # Set force_recompute=True ONLY the first time, then change to False to use cache
+    print("\nCreating buffered water mask with TSS lanes (cached)...")
     buffered_water = create_buffered_water_mask(
         is_water,
         COASTAL_BUFFER_NM,
-        force_recompute=False,
-        tss_geojson_path=tss_geojson_path,
-        land_lane_types=["separation_zone", "inshore_traffic_zone", "separation_line", "separation_boundary", "area_to_avoid"],
-        water_lane_types=["separation_lane"],
-        lane_pixel_width=1,
-        apply_tss_before_buffer=False,
-        supersample_factor=1,
+        force_recompute=False,    # ← Changed to False (use cache after first run)
+        tss_lanes=lanes_mask,     # ← UNCOMMENTED: Use pre-computed mask (fast!)
+        # Commented out slow GeoJSON processing (no longer needed with tss_lanes):
+        # tss_geojson_path="./TSS/separation_lanes_with_direction.geojson",
+        # water_lane_types=["separation_lane"],
+        # lane_pixel_width=1,
+        # apply_tss_before_buffer=False,
     )
    
     # Convert waypoints to pixels
@@ -100,17 +117,7 @@ def main():
         return pt  # give up
     pixel_waypoints = [nudge_to_water(p, buffered_water) for p in pixel_waypoints]
     
-    # Precompute TSS mask (optional dilation_radius widens lane influence)
-    print("\nBuilding TSS mask (cached)...")
-    tss_mask = build_tss_mask(
-        buffered_water.shape[1],
-        buffered_water.shape[0],
-        root_dir='.',
-        dilation_radius=3,
-        use_cache=True,
-        cache_dir='cache',
-        force_recompute=False,
-    )
+    
 
     # Set pixel search radius for A* (in pixels) that equals about 5 nm
     pixel_radius = int(5 * 1852 / ((40075000 / 360) * abs(((max_lat + 10) - (min_lat - 10)) / buffered_water.shape[0]))) 
@@ -118,16 +125,17 @@ def main():
     print(f"Using pixel search radius: {pixel_radius} pixels")
 
     # Initialize TSS-aware A* pathfinding using mask for fast cost adjustments
+    # Now includes no_go_mask to avoid restricted areas
     astar = AStar(
         buffered_water,
         tss_preference=True,
         tss_cost_factor=1,
-        tss_search_radius_m=15000,
-        tss_mask=tss_mask[0],
-        tss_vecs=tss_mask[1],
-        pixel_radius=pixel_radius*2,
-        exploration_angles=360,
-        heuristic_weight=1,
+        tss_mask=lanes_mask,      # Use separation lanes mask
+        tss_vecs=lanes_vecs,      # Use direction vectors for lanes
+        no_go_mask=no_go_mask,    # Block areas to avoid
+        pixel_radius=pixel_radius,
+        exploration_angles=60,
+        heuristic_weight=1.0,       # Standard A* heuristic less makes better
         max_expansions=None,
     )
     
@@ -136,23 +144,133 @@ def main():
     
     # Calculate route
     print("\nCalculating route...")
-    complete_path, total_distance = route_calculator.optimize_route(pixel_waypoints)
+    complete_path, total_distance, in_tss_lane = route_calculator.optimize_route(pixel_waypoints)
 
     if complete_path is None:
         print("No complete path found")
         complete_path = []
         total_distance = 0.0
+        in_tss_lane = []
 
     print(f"\nRoute calculated successfully!")
     print(f"Total distance: {total_distance:.2f} nautical miles")
+    export_path_to_csv(complete_path, "./exports/direct_route.csv")
+    
+    # Print TSS lane statistics
+    if in_tss_lane:
+        tss_count = sum(in_tss_lane)
+        tss_percentage = (tss_count / len(in_tss_lane)) * 100
+        print(f"TSS lane usage: {tss_count}/{len(in_tss_lane)} waypoints ({tss_percentage:.1f}%)")
+
+        # Find segments that go from TSS (True) to TSS (True) with non-TSS waypoints in between
+        print("\nSearching for segments between TSS waypoints with non-TSS points in between...")
+        segments_to_reoptimize = []
+        
+         # check if start is in TSS, if not, force include it
+        if not in_tss_lane[0]:
+            in_tss_lane[0] = True
+
+        # check if end is in TSS, if not, force include it
+        if not in_tss_lane[-1]:
+            in_tss_lane[-1] = True
+
+        # Find all TSS waypoint indices
+        tss_indices = [i for i, in_lane in enumerate(in_tss_lane) if in_lane]
+        
+        if len(tss_indices) >= 2:
+           
+
+            for i in range(len(tss_indices) - 1):
+                start_idx = tss_indices[i]
+                end_idx = tss_indices[i + 1]
+                
+                # Check if there are waypoints in between
+                if end_idx - start_idx > 1:
+                    # There are waypoints in between, check if any are non-TSS
+                    between_indices = range(start_idx + 1, end_idx)
+                    has_non_tss = any(not in_tss_lane[idx] for idx in between_indices)
+                    
+                    if has_non_tss:
+                        segments_to_reoptimize.append((start_idx, end_idx))
+                        print(f"  Found segment: waypoint {start_idx} (TSS) -> {end_idx} (TSS) "
+                              f"with {end_idx - start_idx - 1} waypoints in between")
+        
+        if segments_to_reoptimize:
+            print(f"\nRe-optimizing {len(segments_to_reoptimize)} segment(s) to stay in TSS lanes...")
+            
+            # Build new path by replacing segments
+            new_path = complete_path.copy()
+            offset = 0  # Track index shifts from replacements
+            
+            for start_idx, end_idx in segments_to_reoptimize:
+                # Adjust indices for previous replacements
+                adj_start = start_idx + offset
+                adj_end = end_idx + offset
+                
+                start_wp = new_path[adj_start]
+                end_wp = new_path[adj_end]
+
+
+                
+                # Calculate new path for this segment
+                segment_path = astar.find_path(start_wp, end_wp, step_length = pixel_radius * 3, tss_cost_factor=0.5)
+                
+                if segment_path and len(segment_path) > 0:
+                    # Replace the segment (keep start, replace middle, keep end)
+                    old_segment_len = adj_end - adj_start + 1
+                    new_segment_len = len(segment_path)
+                    
+                    # Remove old segment and insert new one
+                    new_path[adj_start:adj_end + 1] = segment_path
+                    
+                    # Update offset for next iteration
+                    offset += (new_segment_len - old_segment_len)
+                    
+                    print(f"  Replaced segment {start_idx}->{end_idx}: "
+                          f"{old_segment_len} waypoints -> {new_segment_len} waypoints")
+                else:
+                    print(f"  Could not find alternative path for segment {start_idx}->{end_idx}")
+            
+            # Simplify and recalculate
+            print(f"\nOriginal path after segment replacement: {len(new_path)} points")
+            simplified_new_path = route_calculator.simplify_straight_lines(new_path)
+            print(f"Simplified path: {len(simplified_new_path)} points")
+            
+            new_distance = route_calculator.calculate_route_distance(simplified_new_path)
+            new_in_tss_lane = route_calculator._check_tss_lane_status(simplified_new_path)
+            
+            new_tss_count = sum(new_in_tss_lane)
+            new_tss_percentage = (new_tss_count / len(new_in_tss_lane)) * 100 if new_in_tss_lane else 0
+            
+            print(f"\nRe-optimized route results:")
+            print(f"  Distance: {total_distance:.2f} nm -> {new_distance:.2f} nm "
+                  f"(Δ {new_distance - total_distance:+.2f} nm)")
+            print(f"  TSS usage: {tss_percentage:.1f}% -> {new_tss_percentage:.1f}% "
+                  f"(Δ {new_tss_percentage - tss_percentage:+.1f}%)")
+            
+            # Update to use new path
+            complete_path = simplified_new_path
+            total_distance = new_distance
+            in_tss_lane = new_in_tss_lane
+        else:
+            print("No segments found that need re-optimization.")
+        
+        # Print detailed segment analysis
+        print_tss_segments(complete_path, in_tss_lane)
+        
+        # Export TSS analysis to CSV
+        export_tss_analysis(complete_path, in_tss_lane, "exports/tss_analysis.csv")
+    else:
+        print("TSS lane information not available")
 
     # Export routes
-    export_path_to_csv(complete_path, "./exports/direct_route.csv")
+    export_path_to_csv(complete_path, "./exports/direct_route2.csv")
    
 
     # Plot results with TSS lanes
     # print("\nGenerating visualization with TSS lanes...")
-    plot_route_with_tss(buffered_water, complete_path, tss_geojson_path, pixel_waypoints)
+    tss_geojson_path = "./TSS/separation_lanes_with_direction.geojson"  # Define for plotting
+    # plot_route_with_tss(buffered_water, complete_path, tss_geojson_path, pixel_waypoints)
 
 if __name__ == "__main__":
     main()
