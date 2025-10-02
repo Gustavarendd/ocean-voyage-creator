@@ -234,13 +234,14 @@ class AStar:
 
                         # If align > 0, we’re going with the lane; < 0 = against
                         if align > 0.9:      # ~ ≤ 25° difference
-                            return base_cost * self.tss_cost_factor * 0.2
+                            return base_cost * self.tss_cost_factor * 0.5
                         elif align > 0.75:      # ~ ≤ 40° difference
-                            return base_cost* self.tss_cost_factor * 0.4
+                            return base_cost* self.tss_cost_factor * 0.5
                         elif align > 0.5:      # ~ ≤ 60° difference
                             return base_cost* self.tss_cost_factor * 0.5
                         elif align > 0.0:    # ~ ≤ 90° difference
-                            return base_cost* self.tss_cost_factor * (1.0 - 0.5*(1-align))  # small bonus
+                            return base_cost* self.tss_cost_factor * 0.5
+                            #return base_cost* self.tss_cost_factor * (1.0 - 0.5*(1-align))  # small bonus
                         elif align == 0.0:
                             return base_cost
                         elif align > -0.5:     # ~ ≤ 120° difference
@@ -308,7 +309,10 @@ class AStar:
        
         # Retrieve or build ring offsets
         if r not in self._ring_cache:
-            num_dirs = max(self.num_directions, int(2 * math.pi * r * oversample))
+            if self.num_directions is None:
+                num_dirs = int(2 * math.pi * r * oversample)
+            else:
+                num_dirs = self.num_directions
             offsets = []
             seen = set()
             # Precompute integer ring with rounding; duplicates removed
@@ -324,6 +328,7 @@ class AStar:
                 seen.add((dx, dy))
                 offsets.append((dx, dy))
             self._ring_cache[r] = offsets
+            print(f"[A*] r={r} requested_dirs={self.num_directions} generated={num_dirs} unique={len(offsets)}")
         offsets = self._ring_cache[r]
 
         neighbors: list[tuple[int,int]] = []

@@ -1,7 +1,7 @@
 
 cache
-/venv
+venv
 __pycache__
 .DS_Store
-/exports
+*.pyc
 images

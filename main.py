@@ -1,7 +1,7 @@
 """Main script for ocean route optimization - simplified for distance-only routing."""
 
 from config import ROUTE_COORDS, COASTAL_BUFFER_NM, IMAGE_WIDTH, IMAGE_HEIGHT
-from core.initialization import load_and_process_images
+from core.initialization import load_and_process_divided_image, load_and_process_image
 from core.mask import create_buffered_water_mask
 from navigation.astar import AStar
 from navigation.tss_index import build_tss_mask
@@ -43,8 +43,11 @@ def main():
     max_lon = 170
 
     # Load and process images
-    is_water = load_and_process_images(
-        f"./images/land_mask_90N_90S_21600x10800.png", max_lat=max_lat + 10, min_lat=min_lat - 10, max_lon=max_lon + 10, min_lon=min_lon - 10
+    # is_water = load_and_process_image(
+    #      max_lat=max_lat + 10, min_lat=min_lat - 10, max_lon=max_lon + 10, min_lon=min_lon - 10
+    # )
+    is_water = load_and_process_image(
+         max_lat=max_lat + 10, min_lat=min_lat - 10, max_lon=max_lon + 10, min_lon=min_lon - 10
     )
     
     # Create water mask, converting separation zones into land so routing avoids them.
@@ -53,11 +56,11 @@ def main():
     buffered_water = create_buffered_water_mask(
         is_water,
         COASTAL_BUFFER_NM,
-        force_recompute=True,
+        force_recompute=False,
         tss_geojson_path=tss_geojson_path,
         land_lane_types=["separation_zone", "inshore_traffic_zone", "separation_line", "separation_boundary", "area_to_avoid"],
         water_lane_types=["separation_lane"],
-        lane_pixel_width=3,
+        lane_pixel_width=1,
         apply_tss_before_buffer=False,
         supersample_factor=1,
     )
@@ -103,7 +106,7 @@ def main():
         buffered_water.shape[1],
         buffered_water.shape[0],
         root_dir='.',
-        dilation_radius=1,
+        dilation_radius=3,
         use_cache=True,
         cache_dir='cache',
         force_recompute=False,
@@ -122,7 +125,7 @@ def main():
         tss_search_radius_m=15000,
         tss_mask=tss_mask[0],
         tss_vecs=tss_mask[1],
-        pixel_radius=pixel_radius,
+        pixel_radius=pixel_radius*2,
         exploration_angles=360,
         heuristic_weight=1,
         max_expansions=None,
