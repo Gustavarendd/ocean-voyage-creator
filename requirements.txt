@@ -1,0 +1,18 @@
+# Ocean Router - Python Dependencies
+
+# Core numerical computing
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Geospatial operations
+shapely>=2.0.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Optional: Faster morphological operations (highly recommended)
+opencv-python>=4.8.0
+
+# Optional: Visualization (if needed)
+# matplotlib>=3.7.0
+# plotly>=5.14.0

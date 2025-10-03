@@ -66,7 +66,7 @@ def clear_buffered_water_cache():
         return
     
     import glob
-    cache_files = glob.glob(os.path.join(cache_dir, "buffered_water_*.npy"))
+    cache_files = glob.glob(os.path.join(cache_dir, "buffered_water_*.np*"))  # Match both .npy and .npz
     
     for cache_file in cache_files:
         try:
@@ -132,13 +132,14 @@ def create_buffered_water_mask(
         tss_lanes_hash = hashlib.md5(tss_lanes.tobytes()).hexdigest()[:8]
         cache_key += f"_tssl{tss_lanes_hash}"
     
-    cache_file = os.path.join(cache_dir, f"buffered_water_{cache_key}.npy")
+    cache_file = os.path.join(cache_dir, f"buffered_water_{cache_key}.npz")
     
     # Check if cached version exists and force_recompute is False
     if not force_recompute and os.path.exists(cache_file):
         print(f"Loading cached buffered water mask from {cache_file}")
         try:
-            cached_mask = np.load(cache_file)
+            cached_data = np.load(cache_file)
+            cached_mask = cached_data['mask']
             print(f"Successfully loaded cached mask with shape: {cached_mask.shape}")
             return cached_mask
         except Exception as e:
@@ -322,10 +323,10 @@ def create_buffered_water_mask(
     total_time = time.time() - start_time
     print(f"✓ Buffered water mask created in {total_time:.2f}s")
 
-    # Save to cache
+    # Save to cache with compression
     try:
         save_start = time.time()
-        np.save(cache_file, final_mask)
+        np.savez_compressed(cache_file, mask=final_mask)
         print(f"Cached buffered water mask saved to {cache_file} in {time.time() - save_start:.2f}s")
     except Exception as e:
         print(f"Warning: Could not save cache file: {e}")

@@ -42,6 +42,10 @@ class AStar:
         self.heuristic_weight = max(0.1, heuristic_weight)
         self.disable_pruning = disable_pruning
         self.use_numpy_core = use_numpy_core
+        
+        # Cache for goal direction to avoid recomputation
+        self._cached_goal = None
+        self._goal_unit_vec = None
 
         # Active geographic bounds (may be cropped)
         try:  # import inside to honor runtime cropping
@@ -77,6 +81,9 @@ class AStar:
         # Caches
         self._ring_cache = {}
         self._dxdy_unit_cache = {}
+        
+        # Pre-compute ring cache for common radii
+        self._precompute_ring_cache()
 
         # Numpy structures (optional)
         if self.use_numpy_core:
@@ -87,10 +94,45 @@ class AStar:
         else:
             self._g_score = None
 
+    def _precompute_ring_cache(self):
+        """Pre-compute ring offsets for common radii to avoid runtime computation."""
+        max_radius = self.pixel_radius
+        for r in range(1, max_radius + 1):
+            if r in self._ring_cache:
+                continue
+            if self.num_directions is None:
+                num_dirs = int(2 * math.pi * r * 1.0)
+            else:
+                num_dirs = self.num_directions
+            offsets = []
+            seen = set()
+            cos_vals = [math.cos(2 * math.pi * i / num_dirs) for i in range(num_dirs)]
+            sin_vals = [math.sin(2 * math.pi * i / num_dirs) for i in range(num_dirs)]
+            for c, s in zip(cos_vals, sin_vals):
+                dx = int(round(r * c))
+                dy = int(round(r * s))
+                if (dx, dy) == (0, 0):
+                    continue
+                if (dx, dy) in seen:
+                    continue
+                seen.add((dx, dy))
+                offsets.append((dx, dy))
+            self._ring_cache[r] = offsets
+
     def find_path(self, start, goal, step_length = None, tss_cost_factor = None):
         """Find shortest distance path between start and goal points."""
         import time
         t0 = time.time()
+        
+        # Cache goal direction for TSS cost calculations
+        self._cached_goal = goal
+        gdx = goal[0] - start[0]
+        gdy = goal[1] - start[1]
+        goal_len = (gdx**2 + gdy**2) ** 0.5
+        if goal_len > 0:
+            self._goal_unit_vec = np.array([gdx/goal_len, gdy/goal_len], dtype=np.float32)
+        else:
+            self._goal_unit_vec = None
 
         if step_length is not None:
             if step_length < 1:
@@ -233,7 +275,11 @@ class AStar:
         return None  # no path
 
     def _apply_tss_cost_modifier(self, current, neighbor, base_cost, goal=None):
-        """Apply cost modifier for TSS lanes to prefer routing through them."""
+        """Apply cost modifier for TSS lanes with strict direction compliance.
+        
+        Uses stricter alignment thresholds to ensure proper TSS direction adherence.
+        Penalizes wrong-direction travel heavily for regulatory compliance.
+        """
         # Skip if disabled
         if not self.tss_preference:
             return base_cost
@@ -251,45 +297,39 @@ class AStar:
                     if step_len > 0:
                         step_vec = np.array([dx/step_len, dy/step_len], dtype=np.float32)
 
-                        # Heading toward goal (pixel space)
-                        if goal is not None:
-                            gdx = goal[0] - current[0]
-                            gdy = goal[1] - current[1]
-                            goal_len = (gdx**2 + gdy**2) ** 0.5
-                            if goal_len > 0:
-                                goal_vec = np.array([gdx/goal_len, gdy/goal_len], dtype=np.float32)
-                               
-
-
-                        # Alignment = cosine similarity between lane dir and step dir and goal dir                        
+                        # Lane alignment = cosine similarity between lane dir and step dir
                         # -1 = opposite, 0 = perpendicular, +1 = same direction
-                        align = float(np.dot(step_vec, lane_vec))  # -1..1
-                        if goal is not None and goal_len > 0:
-                            align = (align + float(np.dot(goal_vec, lane_vec))) / 2.0
-                      
+                        lane_align = float(np.dot(step_vec, lane_vec))  # -1..1
+                        
+                        # Goal alignment (if goal cached)
+                        goal_align = 0.0
+                        if self._goal_unit_vec is not None:
+                            goal_align = float(np.dot(self._goal_unit_vec, lane_vec))
 
-                        # If align > 0, we’re going with the lane; < 0 = against
-                        if align > 0.9:      # ~ ≤ 25° difference
-                            return base_cost * self.tss_cost_factor * 0.6
-                        elif align > 0.75:      # ~ ≤ 40° difference
-                            return base_cost* self.tss_cost_factor * 0.7
-                        elif align > 0.5:      # ~ ≤ 60° difference
-                            return base_cost* self.tss_cost_factor * 0.7
-                        elif align > 0.0:    # ~ ≤ 90° difference
-                            return base_cost* self.tss_cost_factor * 0.7
-                            #return base_cost* self.tss_cost_factor * (1.0 - 0.5*(1-align))  # small bonus
-                        elif align == 0.0:   # perpendicular
-                            return base_cost * 0.8
-                        elif align > -0.2:     # ~ ≤ 100° difference
-                            return base_cost * 0.9
-                        elif align > -0.5:     # ~ ≤ 120° difference
-                            return base_cost * 0.95
-                        else:                  # > 120° difference
-                            return base_cost * 10  # heavily penalize going against lane
+                        # Strict lane direction enforcement
+                        # Prioritize lane direction compliance over goal proximity
+                        if lane_align > 0.95:      # Excellent alignment (≤18°)
+                            cost_multiplier = 0.4
+                        elif lane_align > 0.85:    # Good alignment (≤32°)
+                            cost_multiplier = 0.6
+                        elif lane_align > 0.7:     # Acceptable (≤45°)
+                            cost_multiplier = 0.8
+                        elif lane_align > 0.5:     # Marginal (≤60°)
+                            cost_multiplier = 1.0
+                        elif lane_align > 0.0:     # Crossing/perpendicular (≤90°)
+                            cost_multiplier = 2.0
+                        elif lane_align > -0.5:    # Wrong direction (90-120°)
+                            cost_multiplier = 10.0
+                        else:                      # Completely wrong (>120°)
+                            cost_multiplier = 50.0
+                        
+                        # Apply goal direction as secondary consideration
+                        if goal_align < -0.5:  # Going away from goal in lane
+                            cost_multiplier *= 1.5  # Additional penalty
+                        
+                        return base_cost * self.tss_cost_factor * cost_multiplier
 
             return base_cost
-
-
     def _calculate_bearing(self, lat1, lon1, lat2, lon2):
         """Calculate the bearing between two lat/lon points in degrees."""
         lat1_rad = math.radians(lat1)
