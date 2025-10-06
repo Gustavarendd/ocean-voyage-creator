@@ -11,7 +11,7 @@ from navigation.route import RouteCalculator
 from utils.coordinates import latlon_to_pixel, validate_coordinates, pixel_to_latlon
 from visualization.export import export_path_to_csv
 from visualization.plotting import plot_route, plot_route_with_tss
-from export_tss_analysis import export_tss_analysis, print_tss_segments
+
 
 def main():
 
@@ -133,7 +133,7 @@ def main():
         tss_mask=lanes_mask,      # Use separation lanes mask
         tss_vecs=lanes_vecs,      # Use direction vectors for lanes
         no_go_mask=no_go_mask,    # Block areas to avoid
-        pixel_radius=pixel_radius,
+        pixel_radius=pixel_radius*2,
         exploration_angles=60,
         heuristic_weight=1.0,       # Standard A* heuristic less makes better
         max_expansions=None,
@@ -157,114 +157,114 @@ def main():
     export_path_to_csv(complete_path, "./exports/direct_route.csv")
     
     # Print TSS lane statistics
-    if in_tss_lane:
-        tss_count = sum(in_tss_lane)
-        tss_percentage = (tss_count / len(in_tss_lane)) * 100
-        print(f"TSS lane usage: {tss_count}/{len(in_tss_lane)} waypoints ({tss_percentage:.1f}%)")
+    # if in_tss_lane:
+    #     tss_count = sum(in_tss_lane)
+    #     tss_percentage = (tss_count / len(in_tss_lane)) * 100
+    #     print(f"TSS lane usage: {tss_count}/{len(in_tss_lane)} waypoints ({tss_percentage:.1f}%)")
 
-        # Find segments that go from TSS (True) to TSS (True) with non-TSS waypoints in between
-        print("\nSearching for segments between TSS waypoints with non-TSS points in between...")
-        segments_to_reoptimize = []
+    #     # Find segments that go from TSS (True) to TSS (True) with non-TSS waypoints in between
+    #     print("\nSearching for segments between TSS waypoints with non-TSS points in between...")
+    #     segments_to_reoptimize = []
         
-         # check if start is in TSS, if not, force include it
-        if not in_tss_lane[0]:
-            in_tss_lane[0] = True
+    #      # check if start is in TSS, if not, force include it
+    #     if not in_tss_lane[0]:
+    #         in_tss_lane[0] = True
 
-        # check if end is in TSS, if not, force include it
-        if not in_tss_lane[-1]:
-            in_tss_lane[-1] = True
+    #     # check if end is in TSS, if not, force include it
+    #     if not in_tss_lane[-1]:
+    #         in_tss_lane[-1] = True
 
-        # Find all TSS waypoint indices
-        tss_indices = [i for i, in_lane in enumerate(in_tss_lane) if in_lane]
+    #     # Find all TSS waypoint indices
+    #     tss_indices = [i for i, in_lane in enumerate(in_tss_lane) if in_lane]
         
-        if len(tss_indices) >= 2:
+    #     if len(tss_indices) >= 2:
            
 
-            for i in range(len(tss_indices) - 1):
-                start_idx = tss_indices[i]
-                end_idx = tss_indices[i + 1]
+    #         for i in range(len(tss_indices) - 1):
+    #             start_idx = tss_indices[i]
+    #             end_idx = tss_indices[i + 1]
                 
-                # Check if there are waypoints in between
-                if end_idx - start_idx > 1:
-                    # There are waypoints in between, check if any are non-TSS
-                    between_indices = range(start_idx + 1, end_idx)
-                    has_non_tss = any(not in_tss_lane[idx] for idx in between_indices)
+    #             # Check if there are waypoints in between
+    #             if end_idx - start_idx > 1:
+    #                 # There are waypoints in between, check if any are non-TSS
+    #                 between_indices = range(start_idx + 1, end_idx)
+    #                 has_non_tss = any(not in_tss_lane[idx] for idx in between_indices)
                     
-                    if has_non_tss:
-                        segments_to_reoptimize.append((start_idx, end_idx))
-                        print(f"  Found segment: waypoint {start_idx} (TSS) -> {end_idx} (TSS) "
-                              f"with {end_idx - start_idx - 1} waypoints in between")
+    #                 if has_non_tss:
+    #                     segments_to_reoptimize.append((start_idx, end_idx))
+    #                     print(f"  Found segment: waypoint {start_idx} (TSS) -> {end_idx} (TSS) "
+    #                           f"with {end_idx - start_idx - 1} waypoints in between")
         
-        if segments_to_reoptimize:
-            print(f"\nRe-optimizing {len(segments_to_reoptimize)} segment(s) to stay in TSS lanes...")
+    #     if segments_to_reoptimize:
+    #         print(f"\nRe-optimizing {len(segments_to_reoptimize)} segment(s) to stay in TSS lanes...")
             
-            # Build new path by replacing segments
-            new_path = complete_path.copy()
-            offset = 0  # Track index shifts from replacements
+    #         # Build new path by replacing segments
+    #         new_path = complete_path.copy()
+    #         offset = 0  # Track index shifts from replacements
             
-            for start_idx, end_idx in segments_to_reoptimize:
-                # Adjust indices for previous replacements
-                adj_start = start_idx + offset
-                adj_end = end_idx + offset
+    #         for start_idx, end_idx in segments_to_reoptimize:
+    #             # Adjust indices for previous replacements
+    #             adj_start = start_idx + offset
+    #             adj_end = end_idx + offset
                 
-                start_wp = new_path[adj_start]
-                end_wp = new_path[adj_end]
+    #             start_wp = new_path[adj_start]
+    #             end_wp = new_path[adj_end]
 
 
                 
-                # Calculate new path for this segment
-                segment_path = astar.find_path(start_wp, end_wp, step_length = pixel_radius * 3, tss_cost_factor=0.5)
+    #             # Calculate new path for this segment
+    #             segment_path = astar.find_path(start_wp, end_wp, step_length = pixel_radius * 3, tss_cost_factor=0.5)
                 
-                if segment_path and len(segment_path) > 0:
-                    # Replace the segment (keep start, replace middle, keep end)
-                    old_segment_len = adj_end - adj_start + 1
-                    new_segment_len = len(segment_path)
+    #             if segment_path and len(segment_path) > 0:
+    #                 # Replace the segment (keep start, replace middle, keep end)
+    #                 old_segment_len = adj_end - adj_start + 1
+    #                 new_segment_len = len(segment_path)
                     
-                    # Remove old segment and insert new one
-                    new_path[adj_start:adj_end + 1] = segment_path
+    #                 # Remove old segment and insert new one
+    #                 new_path[adj_start:adj_end + 1] = segment_path
                     
-                    # Update offset for next iteration
-                    offset += (new_segment_len - old_segment_len)
+    #                 # Update offset for next iteration
+    #                 offset += (new_segment_len - old_segment_len)
                     
-                    print(f"  Replaced segment {start_idx}->{end_idx}: "
-                          f"{old_segment_len} waypoints -> {new_segment_len} waypoints")
-                else:
-                    print(f"  Could not find alternative path for segment {start_idx}->{end_idx}")
+    #                 print(f"  Replaced segment {start_idx}->{end_idx}: "
+    #                       f"{old_segment_len} waypoints -> {new_segment_len} waypoints")
+    #             else:
+    #                 print(f"  Could not find alternative path for segment {start_idx}->{end_idx}")
             
-            # Simplify and recalculate
-            print(f"\nOriginal path after segment replacement: {len(new_path)} points")
-            simplified_new_path = route_calculator.simplify_straight_lines(new_path)
-            print(f"Simplified path: {len(simplified_new_path)} points")
+    #         # Simplify and recalculate
+    #         print(f"\nOriginal path after segment replacement: {len(new_path)} points")
+    #         simplified_new_path = route_calculator.simplify_straight_lines(new_path)
+    #         print(f"Simplified path: {len(simplified_new_path)} points")
             
-            new_distance = route_calculator.calculate_route_distance(simplified_new_path)
-            new_in_tss_lane = route_calculator._check_tss_lane_status(simplified_new_path)
+    #         new_distance = route_calculator.calculate_route_distance(simplified_new_path)
+    #         new_in_tss_lane = route_calculator._check_tss_lane_status(simplified_new_path)
             
-            new_tss_count = sum(new_in_tss_lane)
-            new_tss_percentage = (new_tss_count / len(new_in_tss_lane)) * 100 if new_in_tss_lane else 0
+    #         new_tss_count = sum(new_in_tss_lane)
+    #         new_tss_percentage = (new_tss_count / len(new_in_tss_lane)) * 100 if new_in_tss_lane else 0
             
-            print(f"\nRe-optimized route results:")
-            print(f"  Distance: {total_distance:.2f} nm -> {new_distance:.2f} nm "
-                  f"(Δ {new_distance - total_distance:+.2f} nm)")
-            print(f"  TSS usage: {tss_percentage:.1f}% -> {new_tss_percentage:.1f}% "
-                  f"(Δ {new_tss_percentage - tss_percentage:+.1f}%)")
+    #         print(f"\nRe-optimized route results:")
+    #         print(f"  Distance: {total_distance:.2f} nm -> {new_distance:.2f} nm "
+    #               f"(Δ {new_distance - total_distance:+.2f} nm)")
+    #         print(f"  TSS usage: {tss_percentage:.1f}% -> {new_tss_percentage:.1f}% "
+    #               f"(Δ {new_tss_percentage - tss_percentage:+.1f}%)")
             
-            # Update to use new path
-            complete_path = simplified_new_path
-            total_distance = new_distance
-            in_tss_lane = new_in_tss_lane
-        else:
-            print("No segments found that need re-optimization.")
+    #         # Update to use new path
+    #         complete_path = simplified_new_path
+    #         total_distance = new_distance
+    #         in_tss_lane = new_in_tss_lane
+    #     else:
+    #         print("No segments found that need re-optimization.")
         
-        # Print detailed segment analysis
-        print_tss_segments(complete_path, in_tss_lane)
+    #     # Print detailed segment analysis
+    #     print_tss_segments(complete_path, in_tss_lane)
         
-        # Export TSS analysis to CSV
-        export_tss_analysis(complete_path, in_tss_lane, "exports/tss_analysis.csv")
-    else:
-        print("TSS lane information not available")
+    #     # Export TSS analysis to CSV
+    #     export_tss_analysis(complete_path, in_tss_lane, "exports/tss_analysis.csv")
+    # else:
+    #     print("TSS lane information not available")
 
     # Export routes
-    export_path_to_csv(complete_path, "./exports/direct_route2.csv")
+    # export_path_to_csv(complete_path, "./exports/direct_route2.csv")
    
 
     # Plot results with TSS lanes
