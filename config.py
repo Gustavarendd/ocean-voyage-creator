@@ -31,10 +31,10 @@ ROUTE_COORDS = [
     # (29.5, -88), (40, -73),  # New Orleans -> New York
     #(25.5, -80), (40, -73.5),  # Miami -> New York
     #(25.5, 122.5), (58, -148),  # Taiwan -> Alaska
-    # (52.12, 3.5), (40, -73.5),  # Rotterdam -> New York
+    (52.12, 3.5), (40, -73.5),  # Rotterdam -> New York
     # (52.12, 3.5), (41.1, -9),  # Rotterdam -> Porto
-    #(60.0, 26.0), (51.5, -8.0) # St. Petersburg -> Cork
-    (51.5, -8.0), (60.0, 26.0) # Cork -> St. Petersburg
+    # (60.0, 26.0), (51.5, -8.0) # St. Petersburg -> Cork
+    # (51.5, -8.0), (60.0, 26.0) # Cork -> St. Petersburg
    
     # (57.5, 11.2), (51.5, -8.0)  # Guthenburg -> Cork
     # (64.83805979142075, 39.87918005420811), (41.1, -9) # Murmansk -> Porto

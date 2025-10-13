@@ -240,7 +240,9 @@ class AStar:
 
         # Fast path: precomputed mask + vector lookup
         if self.tss_mask is not None and self.tss_vecs is not None:
+            cx, cy = current
             nx, ny = neighbor
+
             if 0 <= ny < self.height and 0 <= nx < self.width and self.tss_mask[ny, nx]:
                 lane_vec = self.tss_vecs[ny, nx]
                 if not np.allclose(lane_vec, (0.0, 0.0)):
@@ -269,21 +271,21 @@ class AStar:
                       
 
                         # If align > 0, we’re going with the lane; < 0 = against
-                        if align > 0.9:      # ~ ≤ 25° difference
+                        if align > 0.9 and self.tss_mask[cy, cx]:      # ~ ≤ 25° difference
                             return base_cost * self.tss_cost_factor * 0.6
-                        elif align > 0.75:      # ~ ≤ 40° difference
+                        elif align > 0.75 and self.tss_mask[cy, cx]:      # ~ ≤ 40° difference
                             return base_cost* self.tss_cost_factor * 0.7
-                        elif align > 0.5:      # ~ ≤ 60° difference
+                        elif align > 0.5 and self.tss_mask[cy, cx]:      # ~ ≤ 60° difference
                             return base_cost* self.tss_cost_factor * 0.7
-                        elif align > 0.0:    # ~ ≤ 90° difference
+                        elif align > 0.0 and self.tss_mask[cy, cx]:    # ~ ≤ 90° difference
                             return base_cost* self.tss_cost_factor * 0.7
                             #return base_cost* self.tss_cost_factor * (1.0 - 0.5*(1-align))  # small bonus
-                        elif align == 0.0:   # perpendicular
+                        elif align == 0.0 and self.tss_mask[cy, cx]:   # perpendicular
                             return base_cost * 0.8
                         elif align > -0.2:     # ~ ≤ 100° difference
-                            return base_cost * 0.9
-                        elif align > -0.5:     # ~ ≤ 120° difference
                             return base_cost * 0.95
+                        elif align > -0.5:     # ~ ≤ 120° difference
+                            return base_cost * 1
                         else:                  # > 120° difference
                             return base_cost * 10  # heavily penalize going against lane
 
@@ -391,6 +393,8 @@ class AStar:
                 # Skip if this pixel is marked as a no-go area
                 if self.no_go_mask is not None and self.no_go_mask[ny, nx]:
                     continue
+                if self.check_between_wps(point, (nx, ny)):
+                    continue  # land in between
                 neighbors.append((nx, ny))
         if neighbors:
             return neighbors
@@ -449,3 +453,40 @@ class AStar:
             cx, cy = px, py
         path.reverse()
         return path
+    
+
+    def check_between_wps(self, start, end):
+        """Check if a straight line between start and end crosses any land pixels.
+
+        Args:
+            start: (x, y) pixel
+            end: (x, y) pixel
+        Returns:
+            True if line crosses land, False if clear water
+        """
+        x0, y0 = start
+        x1, y1 = end
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx - dy
+
+        while True:
+            if not (0 <= x0 < self.width and 0 <= y0 < self.height):
+                return True  # out of bounds treated as land
+            if not self.buffered_water[y0, x0]:
+                return True  # hit land
+            # if self.no_go_mask is not None and self.no_go_mask[y0, x0]:
+            #     return True  # hit no-go area
+            if (x0, y0) == (x1, y1):
+                break
+            err2 = err * 2
+            if err2 > -dy:
+                err -= dy
+                x0 += sx
+            if err2 < dx:
+                err += dx
+                y0 += sy
+
+        return False  # clear water between points

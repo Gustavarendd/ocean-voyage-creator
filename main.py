@@ -60,7 +60,7 @@ def main():
         root_dir='.',
         dilation_radius=0,        # Widen separation lanes slightly
         no_go_dilation=0,         # Widen no-go areas for safety
-        supersample_factor=1,     # 2x higher resolution for TSS features
+        supersample_factor=2,     # 2x higher resolution for TSS features
         use_cache=True,
         cache_dir='cache',
         force_recompute=False,
@@ -127,16 +127,16 @@ def main():
     # Initialize TSS-aware A* pathfinding using mask for fast cost adjustments
     # Now includes no_go_mask to avoid restricted areas
     astar = AStar(
-        buffered_water,
-        tss_preference=True,
-        tss_cost_factor=1,
+        buffered_water, # Use buffered water mask for navigation
+        tss_preference=False,    # Enable TSS lane preference
+        tss_cost_factor=0.95,       # Lower cost to favor TSS lanes more
         tss_mask=lanes_mask,      # Use separation lanes mask
         tss_vecs=lanes_vecs,      # Use direction vectors for lanes
         no_go_mask=no_go_mask,    # Block areas to avoid
-        pixel_radius=pixel_radius*2,
-        exploration_angles=60,
-        heuristic_weight=1.0,       # Standard A* heuristic less makes better
-        max_expansions=None,
+        pixel_radius=pixel_radius, # Search radius in pixels
+        exploration_angles=60,   # Wider search angles for better pathfinding
+        heuristic_weight=1.0,       # Standard A* heuristic less makes better paths but slower
+        max_expansions=None,       # No limit on expansions (can be set for performance)
     )
     
     # Initialize simplified route calculator
@@ -269,7 +269,7 @@ def main():
 
     # Plot results with TSS lanes
     # print("\nGenerating visualization with TSS lanes...")
-    tss_geojson_path = "./TSS/separation_lanes_with_direction.geojson"  # Define for plotting
+    
     # plot_route_with_tss(buffered_water, complete_path, tss_geojson_path, pixel_waypoints)
 
 if __name__ == "__main__":
