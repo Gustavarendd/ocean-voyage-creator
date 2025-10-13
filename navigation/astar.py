@@ -324,6 +324,12 @@ class AStar:
         width, height = self.width, self.height
         start_radius = max(1, int(round(self.pixel_radius)))
 
+        close_to_land, pixel_dist = self.is_land_close_to_position(point, check_radius=20)
+
+
+        if close_to_land and pixel_dist is not None and pixel_dist < start_radius:
+            start_radius = max(1, pixel_dist - 1)
+
         # Safety cap so we can't loop forever
         if max_radius is None:
             max_radius = int(math.ceil(math.hypot(width, height)))
@@ -490,3 +496,85 @@ class AStar:
                 y0 += sy
 
         return False  # clear water between points
+    
+
+    def get_tss_waypoints_near(self, position, radius_nm=50):
+        """Get cached or compute TSS waypoints near a given pixel position.
+
+        Args:
+            position: (x, y) pixel
+            radius_nm: search radius in nautical miles
+        Returns:
+            List of (lat, lon) waypoints within radius
+        """
+        if position in self.tss_cache:
+            return self.tss_cache[position]
+        lat, lon = pixel_to_latlon(position[0], position[1], self.width, self.height,
+                                  self.ACTIVE_LAT_MIN, self.ACTIVE_LAT_MAX,
+                                  self.ACTIVE_LON_MIN, self.ACTIVE_LON_MAX)
+        waypoints = get_tss_waypoints_near_position(lat, lon, radius_nm)
+        self.tss_cache[position] = waypoints
+        return waypoints
+    
+
+    def position_close_to_land(self, position, check_radius=20):
+        """Check if there is land within a square of given radius around position.
+
+        Args:
+            position: (x, y) pixel
+            check_radius: radius in pixels to check around position
+        Returns:
+            True if any land pixel found, False if all water,
+            and pixel distance to nearest land
+        """
+        x, y = position
+        x_min = max(0, x - check_radius)
+        x_max = min(self.width - 1, x + check_radius)
+        y_min = max(0, y - check_radius)
+        y_max = min(self.height - 1, y + check_radius)
+        sub_area = self.buffered_water[y_min:y_max+1, x_min:x_max+1]
+
+        close_to_land = not np.all(sub_area)  # True if any land (False in water-only area)
+        pixel_dist = None
+        if close_to_land:
+            # Compute distance to nearest land pixel
+            land_indices = np.argwhere(~sub_area)  # indices of land pixels in sub_area
+            if land_indices.size > 0:
+                # Convert to absolute pixel coordinates
+                land_coords = land_indices + np.array([y_min, x_min])
+                dists = np.hypot(land_coords[:,1] - x, land_coords[:,0] - y)
+                pixel_dist = int(np.min(dists))
+            return close_to_land, pixel_dist
+        return close_to_land, None
+       
+
+    def is_position_close_to_tss(self, position):
+        """Check if a pixel position is within a TSS lane.
+
+        Args:
+            position: (x, y) pixel
+        Returns:
+            True if in TSS lane, False otherwise.
+            pixel distance to nearest TSS lane (None if not found)
+        """
+        x, y = position
+        if self.tss_mask is None:
+            return False, None
+        if 0 <= x < self.width and 0 <= y < self.height:
+            if self.tss_mask[y, x]:
+                return True, 0  # in TSS lane
+            # Compute distance to nearest TSS lane pixel
+            check_radius = 20
+            x_min = max(0, x - check_radius)
+            x_max = min(self.width - 1, x + check_radius)
+            y_min = max(0, y - check_radius)
+            y_max = min(self.height - 1, y + check_radius)
+            sub_area = self.tss_mask[y_min:y_max+1, x_min:x_max+1]
+            tss_indices = np.argwhere(sub_area)  # indices of TSS pixels in sub_area
+            if tss_indices.size > 0:
+                # Convert to absolute pixel coordinates
+                tss_coords = tss_indices + np.array([y_min, x_min])
+                dists = np.hypot(tss_coords[:,1] - x, tss_coords[:,0] - y)
+                pixel_dist = int(np.min(dists))
+                return False, pixel_dist
+        return False, None
