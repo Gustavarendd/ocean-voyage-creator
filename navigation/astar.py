@@ -14,6 +14,12 @@ import heapq
 import math
 from config import LAT_MIN, LAT_MAX, RADIUS
 import numpy as np
+
+EARTH_RADIUS_NM = 3440.065
+DX8 = np.array([1, 1, 0, -1, -1, -1, 0, 1], dtype=np.int8)
+DY8 = np.array([0, 1, 1, 1, 0, -1, -1, -1], dtype=np.int8)
+DIR_LOOKUP: dict[tuple[int, int], int] = {tuple(map(int, pair)): idx for idx, pair in enumerate(zip(DX8, DY8))}
+PARENT_SENTINEL = np.uint8(255)
 try:
     from core.initialization import ACTIVE_LON_MIN, ACTIVE_LON_MAX
 except Exception:
@@ -81,6 +87,15 @@ class AStar:
         self.dlon_per_px = (self.ACTIVE_LON_MAX - self.ACTIVE_LON_MIN) / self.width
         self.mid_lat_rad = math.radians((self.ACTIVE_LAT_MIN + self.ACTIVE_LAT_MAX) / 2.0)
 
+        # Precompute latitude/longitude metadata for great-circle calculations
+        row_indices = np.arange(self.height, dtype=np.float32) + 0.5
+        col_indices = np.arange(self.width, dtype=np.float32) + 0.5
+        self._lat_rows = (self.ACTIVE_LAT_MAX - row_indices * self.dlat_per_px).astype(np.float32)
+        self._lon_cols = (self.ACTIVE_LON_MIN + col_indices * self.dlon_per_px).astype(np.float32)
+        self._lat_rad_rows = np.deg2rad(self._lat_rows.astype(np.float64))
+        self._lon_rad_cols = np.deg2rad(self._lon_cols.astype(np.float64))
+        self._cos_lat_rows = np.cos(self._lat_rad_rows)
+
         # Scale exploration radius if grid cropped (so physical distance similar)
         lon_scale = 360.0 / max(1e-6, (self.ACTIVE_LON_MAX - self.ACTIVE_LON_MIN))
         lat_scale = (LAT_MAX - LAT_MIN) / max(1e-6, (self.ACTIVE_LAT_MAX - self.ACTIVE_LAT_MIN))
@@ -99,10 +114,10 @@ class AStar:
 
         # Numpy structures (optional)
         if self.use_numpy_core:
-            self._g_score = np.full((self.height, self.width), np.inf, dtype=np.float64)
-            self._closed = np.zeros((self.height, self.width), dtype=bool)
-            self._parent_x = np.full((self.height, self.width), -1, dtype=np.int32)
-            self._parent_y = np.full((self.height, self.width), -1, dtype=np.int32)
+            self._g_score = np.full((self.height, self.width), np.inf, dtype=np.float32)
+            self._closed = np.zeros((self.height, self.width), dtype=np.bool_)
+            self._parent_dir = np.full((self.height, self.width), PARENT_SENTINEL, dtype=np.uint8)
+            self._parent_special: dict[tuple[int, int], tuple[int, int]] = {}
         else:
             self._g_score = None
 
@@ -192,8 +207,9 @@ class AStar:
         # Reset arrays (cheap) instead of reallocating
         self._g_score.fill(np.inf)
         self._closed.fill(False)
-        self._parent_x.fill(-1)
-        self._parent_y.fill(-1)
+        self._parent_dir.fill(PARENT_SENTINEL)
+        self._parent_special: dict[tuple[int, int], tuple[int, int]] = {}
+        self._push_seq = 0
 
         sx, sy = start
         gx, gy = goal
@@ -213,24 +229,23 @@ class AStar:
         
         self._g_score[sy, sx] = 0.0
 
-        open_set = []  # entries: (f, x, y)
-        heapq.heappush(open_set, (0.0, sx, sy))
+        open_set: list[tuple[float, int, int, int, float]] = []  # entries: (f, seq, x, y, g)
+        self._push(open_set, 0.0, sx, sy, 0.0)
 
         expansions = 0
-        cos_mid = math.cos(self.mid_lat_rad)
-        start_wp = (sx, sy)  
+        start_wp = (sx, sy)
 
         while open_set:
-            _, cx, cy = heapq.heappop(open_set)
+            _, _, cx, cy, entry_g = heapq.heappop(open_set)
 
-          
-            
-            
-
-            # Already processed
+            current_val = float(self._g_score[cy, cx])
+            if entry_g > current_val + 1e-6:
+                continue
             if self._closed[cy, cx]:
                 continue
-            
+
+            current_g = current_val
+
             if (cx, cy) == (gx, gy):
                 dt = time.time() - t0
                 print(f"A*: reached goal. expansions={expansions} elapsed={dt:.2f}s")
@@ -244,41 +259,107 @@ class AStar:
             # Check if this node is a TSS lane entry point - if so, inject waypoints
             if (cx, cy) in self.tss_lane_entry_map:
                 lane_idx = self.tss_lane_entry_map[(cx, cy)]
-                injected = self._inject_lane_waypoints(lane_idx, (cx, cy), open_set, cos_mid)
+                injected = self._inject_lane_waypoints(lane_idx, (cx, cy), open_set)
                 # Allow both lane waypoints and regular neighbors for flexibility
 
             # Get neighbors
             neighbors = list(self._get_neighbors((cx, cy), goal, prev_wp=start_wp))
-            
+
             for nx, ny in neighbors:
                 if self._closed[ny, nx]:
                     continue
                 # Delta respecting wrap
-                if self.wrap_longitude:
-                    dx1 = nx - cx
-                    dx2 = nx - cx - self.width
-                    dx3 = nx - cx + self.width
-                    dx_px = min([dx1, dx2, dx3], key=abs)
-                else:
-                    dx_px = nx - cx
-                dy_px = ny - cy
-                dlat_deg = dy_px * self.dlat_per_px
-                dlon_deg = dx_px * self.dlon_per_px
-                base_cost = math.hypot(dlat_deg, dlon_deg * cos_mid)
+                base_cost = self._movement_cost_nm(cx, cy, nx, ny)
                 cost = self._apply_tss_cost_modifier((cx, cy), (nx, ny), base_cost, goal)
-                tentative_g = self._g_score[cy, cx] + cost
+                tentative_g = current_g + cost
                 if tentative_g < self._g_score[ny, nx]:
-                    self._g_score[ny, nx] = tentative_g
-                    self._parent_x[ny, nx] = cx
-                    self._parent_y[ny, nx] = cy
-                    f = tentative_g + self.heuristic_weight * self._heuristic((nx, ny), goal)
-                    heapq.heappush(open_set, (f, nx, ny))
+                    self._g_score[ny, nx] = np.float32(tentative_g)
+                    self._set_parent(nx, ny, cx, cy)
+                    h = self._heuristic((nx, ny), goal)
+                    f = tentative_g + self.heuristic_weight * h
+                    f += self._bearing_bias((cx, cy), (nx, ny), goal)
+                    self._push(open_set, f, nx, ny, tentative_g)
 
         return None  # no path
 
+    def _push(self, heap, f, x, y, g):
+        """Push an entry into the open set with monotonic sequence for tie-breaking."""
+        self._push_seq += 1
+        heapq.heappush(heap, (f, self._push_seq, x, y, g))
+
+    def _delta_x(self, x0, x1):
+        dx = x1 - x0
+        if self.wrap_longitude:
+            half = self.width // 2
+            if dx > half:
+                dx -= self.width
+            elif dx < -half:
+                dx += self.width
+        return dx
+
+    def _set_parent(self, child_x, child_y, parent_x, parent_y):
+        dx = self._delta_x(parent_x, child_x)
+        dy = child_y - parent_y
+        if -1 <= dx <= 1 and -1 <= dy <= 1:
+            dir_idx = DIR_LOOKUP.get((int(dx), int(dy)))
+            if dir_idx is not None:
+                self._parent_dir[child_y, child_x] = np.uint8(dir_idx)
+                if hasattr(self, "_parent_special"):
+                    self._parent_special.pop((child_x, child_y), None)
+                return
+        # Fall back to explicit parent storage for long jumps
+        if hasattr(self, "_parent_special"):
+            self._parent_special[(child_x, child_y)] = (parent_x, parent_y)
+        self._parent_dir[child_y, child_x] = PARENT_SENTINEL
+
+    def _movement_cost_nm(self, cx, cy, nx, ny):
+        lat1 = self._lat_rad_rows[cy]
+        lat2 = self._lat_rad_rows[ny]
+        lon1 = self._lon_rad_cols[cx]
+        lon2 = self._lon_rad_cols[nx]
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        if self.wrap_longitude:
+            if dlon > math.pi:
+                dlon -= 2 * math.pi
+            elif dlon < -math.pi:
+                dlon += 2 * math.pi
+        sin_dlat = math.sin(dlat * 0.5)
+        sin_dlon = math.sin(dlon * 0.5)
+        a = sin_dlat * sin_dlat + self._cos_lat_rows[cy] * self._cos_lat_rows[ny] * sin_dlon * sin_dlon
+        a = min(1.0, max(0.0, a))
+        c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+        return float(EARTH_RADIUS_NM * c)
+
+    def _bearing_bias(self, current, neighbor, goal):
+        if goal is None:
+            return 0.0
+        cx, cy = current
+        nx, ny = neighbor
+        dx = self._delta_x(cx, nx)
+        dy = ny - cy
+        if dx == 0 and dy == 0:
+            return 0.0
+        move_len = math.hypot(dx, dy)
+        if move_len == 0:
+            return 0.0
+        mx = dx / move_len
+        my = dy / move_len
+
+        gx, gy = goal
+        gdx = self._delta_x(nx, gx)
+        gdy = gy - ny
+        g_len = math.hypot(gdx, gdy)
+        if g_len == 0:
+            return 0.0
+        gx_unit = gdx / g_len
+        gy_unit = gdy / g_len
+        dot = max(-1.0, min(1.0, mx * gx_unit + my * gy_unit))
+        return (1.0 - dot) * 1e-3
+
     def _apply_tss_cost_modifier(self, current, neighbor, base_cost, goal=None):
         """Apply cost modifier for TSS lanes to prefer routing through them.
-        
+
         This method handles:
         1. Injected lane waypoints (marked as in-lane) get heavy discount
         2. Lane entry points get heavy discount to encourage A* to choose them
@@ -516,7 +597,7 @@ class AStar:
             # Silently fail - don't break A* if lane query fails
             return []
     
-    def _inject_lane_waypoints(self, lane_idx, current_pos, open_set, cos_mid):
+    def _inject_lane_waypoints(self, lane_idx, current_pos, open_set):
         """Inject TSS lane waypoints into the A* search.
 
         When a lane entry is detected, this method adds all lane waypoints
@@ -526,8 +607,6 @@ class AStar:
             lane_idx: Index of the lane in self.tss_lane_data
             current_pos: (x, y) current pixel position (lane entry point)
             open_set: Priority queue (heapq) to inject waypoints into
-            cos_mid: Cosine of mid-latitude for distance calculations
-
         Returns:
             Number of waypoints successfully injected
         """
@@ -544,7 +623,7 @@ class AStar:
                 return 0
             
             cx, cy = current_pos
-            current_g = self._g_score[cy, cx]
+            current_g = float(self._g_score[cy, cx])
             
             injected = 0
             prev_x, prev_y = cx, cy
@@ -571,31 +650,31 @@ class AStar:
                         dx3 = wp_x - prev_x + self.width
                         dx_px = min([dx1, dx2, dx3], key=abs)
                     
-                    dlat_deg = dy_px * self.dlat_per_px
-                    dlon_deg = dx_px * self.dlon_per_px
-                    segment_dist = math.hypot(dlat_deg, dlon_deg * cos_mid)
-                    
+                    segment_dist = self._movement_cost_nm(prev_x, prev_y, wp_x, wp_y)
+
                     # Apply heavy discount for in-lane movement
                     lane_cost_factor = 0.3  # 70% discount for using TSS lane
                     segment_cost = segment_dist * lane_cost_factor
-                    
-                    tentative_g = current_g + segment_cost * (i)  # Accumulate cost
-                    
+
+                    tentative_g = current_g + segment_cost
+
                     # Only inject if this is a better path
                     if tentative_g < self._g_score[wp_y, wp_x]:
-                        self._g_score[wp_y, wp_x] = tentative_g
-                        self._parent_x[wp_y, wp_x] = prev_x
-                        self._parent_y[wp_y, wp_x] = prev_y
-                        
+                        self._g_score[wp_y, wp_x] = np.float32(tentative_g)
+                        self._set_parent(wp_x, wp_y, prev_x, prev_y)
+
                         # Mark as in-lane node
                         self.tss_in_lane_nodes.add((wp_x, wp_y))
-                        
+
                         # Add to open set with heuristic
-                        f = tentative_g + self.heuristic_weight * self._heuristic((wp_x, wp_y), self.current_goal)
-                        heapq.heappush(open_set, (f, wp_x, wp_y))
-                        
+                        h = self._heuristic((wp_x, wp_y), self.current_goal)
+                        f = tentative_g + self.heuristic_weight * h
+                        f += self._bearing_bias((prev_x, prev_y), (wp_x, wp_y), self.current_goal)
+                        self._push(open_set, f, wp_x, wp_y, tentative_g)
+
                         injected += 1
                         prev_x, prev_y = wp_x, wp_y
+                        current_g = tentative_g
                     
                 except Exception:
                     continue
@@ -774,17 +853,29 @@ class AStar:
 
     def _heuristic(self, a, b):
         """Calculate heuristic distance between two points."""
-        dy_px = b[1] - a[1]
+        ax, ay = a
+        bx, by = b
+        if not (0 <= ax < self.width and 0 <= ay < self.height):
+            return 0.0
+        if not (0 <= bx < self.width and 0 <= by < self.height):
+            return 0.0
+        lat1 = self._lat_rad_rows[ay]
+        lat2 = self._lat_rad_rows[by]
+        lon1 = self._lon_rad_cols[ax]
+        lon2 = self._lon_rad_cols[bx]
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
         if self.wrap_longitude:
-            dx1 = b[0] - a[0]
-            dx2 = b[0] - a[0] - self.width
-            dx3 = b[0] - a[0] + self.width
-            dx_px = min([dx1, dx2, dx3], key=abs)
-        else:
-            dx_px = b[0] - a[0]
-        dlat_deg = dy_px * self.dlat_per_px
-        dlon_deg = dx_px * self.dlon_per_px
-        return math.hypot(dlat_deg, dlon_deg * math.cos(self.mid_lat_rad))
+            if dlon > math.pi:
+                dlon -= 2 * math.pi
+            elif dlon < -math.pi:
+                dlon += 2 * math.pi
+        sin_dlat = math.sin(dlat * 0.5)
+        sin_dlon = math.sin(dlon * 0.5)
+        a_term = sin_dlat * sin_dlat + self._cos_lat_rows[ay] * self._cos_lat_rows[by] * sin_dlon * sin_dlon
+        a_term = min(1.0, max(0.0, a_term))
+        c = 2.0 * math.atan2(math.sqrt(a_term), math.sqrt(max(0.0, 1.0 - a_term)))
+        return float(EARTH_RADIUS_NM * c)
 
     # --- Path reconstruction helpers ---
     def _reconstruct_path_dict(self, came_from, start, goal):
@@ -803,12 +894,23 @@ class AStar:
             return []
         cx, cy = gx, gy
         path.append((cx, cy))
-        # Follow parents until start or -1
+        # Follow parents until start or sentinel encountered
         while not (cx == start[0] and cy == start[1]):
-            px = self._parent_x[cy, cx]
-            py = self._parent_y[cy, cx]
-            if px < 0 or py < 0:
-                break  # disconnected
+            dir_idx = int(self._parent_dir[cy, cx])
+            if dir_idx != PARENT_SENTINEL:
+                dx = int(DX8[dir_idx])
+                dy = int(DY8[dir_idx])
+                px = cx - dx
+                py = cy - dy
+                if self.wrap_longitude:
+                    px = self._wrap_x(px)
+            else:
+                parent = self._parent_special.get((cx, cy)) if hasattr(self, "_parent_special") else None
+                if parent is None:
+                    break
+                px, py = parent
+            if not (0 <= px < self.width and 0 <= py < self.height):
+                break
             path.append((px, py))
             cx, cy = px, py
         path.reverse()
