@@ -156,6 +156,7 @@ class RouteCalculator:
         Returns:
             List of booleans, True if point is in a TSS lane, False otherwise
         """
+
         in_tss_lane = []
         
         # Check if router has TSS mask available
@@ -172,6 +173,10 @@ class RouteCalculator:
                 in_tss_lane.append(bool(tss_mask[y, x]))
             else:
                 in_tss_lane.append(False)
+
+        # Ensure start and end points are marked as in TSS lane
+        in_tss_lane[0] = True
+        in_tss_lane[-1] = True
         
         return in_tss_lane
 

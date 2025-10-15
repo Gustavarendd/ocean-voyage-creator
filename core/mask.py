@@ -1,28 +1,8 @@
 """Water mask creation and processing functions.
 
-Enhancements:
-        - Optional integration of TSS (Traffic Separation Scheme)    if force_recompute:
-        print("Force recompute requested - computing buffered water mask...")
-    else:
-        print("Computing buffered water mask (this may take a moment)...")
-
-    import time
-    start_time = time.time()
-
-    try:
-        from core.initialization import get_active_bounds as _gab
-        lat_min, lat_max, lon_min, lon_max = _gab()
-    except Exception:
-        lat_min, lat_max, lon_min, lon_max = LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
-    
-    # Calculate buffer size in pixels (base grid), then scale if supersampling
-    base_pixels_per_nm = (IMAGE_WIDTH / (lon_max - lon_min)) / 60
-    buffer_pixels = int(buffer_nm * base_pixels_per_nm * 2)
-    print(f"Buffer size: {buffer_pixels} pixels for {buffer_nm} nm")           GeoJSON file (e.g. `separation_lanes_with_direction.geojson`).
-            Any features whose `seamark:type` property matches one of the provided
-            lane types (default: separation_zone, separation_lane) are rasterized
-            onto the water mask and converted to land so that routing will avoid
-            crossing them.
+Includes optional integration of Traffic Separation Scheme (TSS) features and a
+coastal buffer in nautical miles, correctly calibrated to pixel radius based on
+the current active map bounds and resolution.
 """
 
 import numpy as np
@@ -41,6 +21,12 @@ except Exception:  # Shapely should be available; keep graceful degradation
     LineString = None
     Polygon = None
     Point = None
+
+# Try importing OpenCV globally to avoid unbound warnings in certain analyzers
+try:  # type: ignore
+    import cv2  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    cv2 = None  # type: ignore
 
 
 try:
@@ -88,95 +74,64 @@ def create_buffered_water_mask(
     lane_pixel_width: int = 10,
     apply_tss_before_buffer: bool = True,
     tss_lanes: np.ndarray | None = None,
-
 ):
-    """Create a water mask with a coastal buffer zone while preserving small islands and narrow channels.
-    Uses caching to avoid recomputation when the same parameters are used.
-    
-    Args:
-        is_water: Boolean array indicating water (True) vs land (False)
-        buffer_nm: Buffer distance in nautical miles
-        force_recompute: If True, bypass cache and recompute the mask
-        tss_geojson_path: Optional path to GeoJSON file containing TSS lanes/zones.
-        land_lane_types: List of seamark:type values to convert to land. Defaults to
-                    ["separation_zone", "separation_lane"].
-        lane_pixel_width: Thickness (in pixels) of the rasterized TSS feature when
-                          converting to land.
-    apply_tss_before_buffer: If True (default) treat TSS features as land prior
-                 to applying the coastline buffer (so buffer will
-                 also expand them). If False, they are carved out
-                 after buffering (narrower restriction).
-   
+    """Create a water mask with a coastal buffer zone.
+
+    Calibrates buffer_nm to an exact pixel radius using the current active
+    geographic bounds and output resolution.
     """
-    # Create cache directory if it doesn't exist
+    # Cache setup
     cache_dir = "cache"
-    if not os.path.exists(cache_dir):
-        os.makedirs(cache_dir)
-    
-    # Create a hash of the input parameters to use as cache key
+    os.makedirs(cache_dir, exist_ok=True)
     cache_key = _create_cache_key(is_water, buffer_nm)
-    
-    # Incorporate TSS modifications into cache key if provided
-    tss_hash = None
+
     if tss_geojson_path and os.path.exists(tss_geojson_path):
         try:
             with open(tss_geojson_path, "rb") as f:
                 import hashlib as _hl
                 tss_hash = _hl.md5(f.read()).hexdigest()[:8]
             cache_key += f"_tss{tss_hash}_w{lane_pixel_width}_pre{int(apply_tss_before_buffer)}"
-        except Exception as e:
-            print(f"Warning: Could not hash TSS file for cache key ({e}); not caching TSS variant uniquely.")
-    
-    # Add tss_lanes hash to cache key if provided
+        except Exception:
+            pass
     if tss_lanes is not None:
         tss_lanes_hash = hashlib.md5(tss_lanes.tobytes()).hexdigest()[:8]
         cache_key += f"_tssl{tss_lanes_hash}"
-    
+
     cache_file = os.path.join(cache_dir, f"buffered_water_{cache_key}.npy")
-    
-    # Check if cached version exists and force_recompute is False
     if not force_recompute and os.path.exists(cache_file):
         print(f"Loading cached buffered water mask from {cache_file}")
         try:
-            cached_mask = np.load(cache_file)
-            print(f"Successfully loaded cached mask with shape: {cached_mask.shape}")
-            return cached_mask
-        except Exception as e:
-            print(f"Error loading cached mask: {e}. Recomputing...")
-    
-    if force_recompute:
-        print("Force recompute requested - computing buffered water mask...")
-    else:
-        print("Computing buffered water mask (this may take a moment)...")
+            return np.load(cache_file)
+        except Exception:
+            print("Cache load failed; recomputing...")
 
+    print("Force recompute requested - computing buffered water mask..." if force_recompute else "Computing buffered water mask (this may take a moment)...")
     start_time = time.time()
 
+    # Active bounds and pixel scale
     try:
         from core.initialization import get_active_bounds as _gab
         lat_min, lat_max, lon_min, lon_max = _gab()
     except Exception:
         lat_min, lat_max, lon_min, lon_max = LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
-    
-    # Calculate buffer size in pixels (base grid), then scale if supersampling
-    base_pixels_per_nm = (IMAGE_WIDTH / (lon_max - lon_min)) / 60
-    buffer_pixels = int(buffer_nm * base_pixels_per_nm * 2)
-    
-    # use tss_lanes if provided
-    tss_start = time.time()
-    if tss_lanes is not None:
-        if tss_lanes.shape != is_water.shape:
-            print("Warning: Provided TSS lanes mask has different shape than water mask; ignoring TSS lanes.")
-        else:
-            print("Applying provided TSS lanes mask to water mask.")
-            # Make sure all lanes are marked as water in the mask (OR operation)
-            is_water = is_water | tss_lanes
-            print(f"  ✓ TSS lanes applied in {time.time() - tss_start:.2f}s")
+    width_px = is_water.shape[1]
+    pixels_per_degree = width_px / (lon_max - lon_min)
+    pixels_per_nm = pixels_per_degree / 60.0
+    buffer_radius_px = int(round(buffer_nm * pixels_per_nm))
+    print(f"Coastal buffer: {buffer_nm} nm -> {buffer_radius_px} px (px/°={pixels_per_degree:.2f}, px/nm={pixels_per_nm:.2f})")
 
-    # Optionally apply TSS (turn specified lanes/zones into land) either before buffering
-    # or after, depending on parameter.
+    # Integrate TSS lanes (as water) if provided
+    if tss_lanes is not None and tss_lanes.shape == is_water.shape:
+        t0 = time.time()
+        is_water = is_water | tss_lanes
+        print(f"  ✓ TSS lanes applied in {time.time() - t0:.2f}s")
+    elif tss_lanes is not None:
+        print("Warning: Provided TSS lanes mask has different shape than water mask; ignoring TSS lanes.")
+
+    # Apply TSS (make land/water) before buffering if requested
     if tss_geojson_path and apply_tss_before_buffer:
         try:
-            geojson_start = time.time()
+            t0 = time.time()
             is_water = _apply_tss_to_mask(
                 is_water,
                 tss_geojson_path,
@@ -184,129 +139,43 @@ def create_buffered_water_mask(
                 water_lane_types=water_lane_types,
                 lane_pixel_width=lane_pixel_width,
             )
-            print(f"Applied TSS lanes/zones to mask (pre-buffer) in {time.time() - geojson_start:.2f}s")
+            print(f"Applied TSS (pre-buffer) in {time.time() - t0:.2f}s")
         except Exception as e:
             print(f"Warning: Failed to apply TSS lanes before buffering: {e}")
 
-    # is_water_corrected = preserve_critical_channels(is_water, critical_areas)
-  
-    # Try to use OpenCV for faster morphological operations
-    try:
-        import cv2
-        use_opencv = True
-        print("Using OpenCV for morphological operations (faster)")
-    except ImportError:
-        use_opencv = False
-        print("OpenCV not available, using scipy (slower)")
-    
-    # Create land mask (invert is_water so True = land, False = water)
+    # Invert mask for dilation (land=True)
     land_mask = ~is_water
 
-    if use_opencv:
-        # OpenCV-based fast implementation
-        morph_start = time.time()
-        # Convert to uint8 for OpenCV
-        land_uint8 = land_mask.astype(np.uint8)
-        
-        # Define threshold for small islands
-        small_island_threshold = max(buffer_pixels / 5, 5)
-        
-        # Label connected components using OpenCV (much faster than scipy)
-        label_start = time.time()
-        num_features, labeled_lands = cv2.connectedComponents(land_uint8, connectivity=8)
-        print(f"  ✓ Connected components labeled in {time.time() - label_start:.2f}s ({num_features} features)")
-        
-        # Calculate sizes
-        land_sizes = np.bincount(labeled_lands.ravel())
-        
-        # Process large and small landmasses separately
-        classify_start = time.time()
-        
-        # Fully vectorized classification (NO LOOPS - uses numpy broadcasting)
-        # Create lookup table: for each label, is it large (255) or small (0)?
-        # NOTE: Label 0 is background (water), so we exclude it from classification
-        is_large = (land_sizes > small_island_threshold).astype(np.uint8) * 255
-        is_small = ((land_sizes > 0) & (land_sizes <= small_island_threshold)).astype(np.uint8) * 255
-        
-        # CRITICAL FIX: Set label 0 (background/water) to 0 in both lookup tables
-        is_large[0] = 0
-        is_small[0] = 0
-        
-        # Use the labeled array as indices into lookup table (vectorized!)
-        large_lands = is_large[labeled_lands]
-        small_lands = is_small[labeled_lands]
-        
-        large_count = np.sum(land_sizes[1:] > small_island_threshold)  # Exclude label 0
-        small_count = np.sum((land_sizes[1:] > 0) & (land_sizes[1:] <= small_island_threshold))
-        print(f"  ✓ Land masses classified in {time.time() - classify_start:.2f}s ({large_count} large, {small_count} small)")
-        
-        # Skip dilation if buffer_pixels is 0 or too small
-        if buffer_pixels < 3:
-            print(f"  ⚠ Buffer size too small ({buffer_pixels} pixels), skipping dilation")
-            final_mask = is_water.copy()
-            print(f"Total morphological operations: {time.time() - morph_start:.2f}s")
-        else:
-            # Apply different buffer sizes using OpenCV morphological operations
-            # Create circular kernels (more accurate than square)
-            kernel_start = time.time()
-            # Ensure kernel size is odd and at least 3
-            main_size = max(3, buffer_pixels if buffer_pixels % 2 == 1 else buffer_pixels + 1)
-            small_size = max(3, buffer_pixels // 2 if (buffer_pixels // 2) % 2 == 1 else (buffer_pixels // 2) + 1)
-            
-            main_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (main_size, main_size))
-            small_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (small_size, small_size))
-            print(f"  ✓ Kernels created in {time.time() - kernel_start:.2f}s (main: {main_size}x{main_size}, small: {small_size}x{small_size})")
-            
-            dilate_start = time.time()
-            dilated_large = cv2.dilate(large_lands, main_kernel, iterations=1)
-            dilated_small = cv2.dilate(small_lands, small_kernel, iterations=1)
-            print(f"  ✓ Dilation completed in {time.time() - dilate_start:.2f}s")
-            
-            # Combine results
-            combined_lands = (dilated_large > 0) | (dilated_small > 0)
-            final_mask = ~combined_lands
-            print(f"Total morphological operations: {time.time() - morph_start:.2f}s")
+    # Apply coastal buffer by dilating land by a radius of buffer_radius_px pixels
+    if cv2 is not None:
+        print("Using OpenCV for morphological operations (faster)")
     else:
-        # Fallback to scipy implementation
-        labeled_lands, num_features = ndimage.label(land_mask)
-        land_sizes = np.bincount(labeled_lands.ravel())
-        
-        # Define threshold for small islands
-        small_island_threshold = max(buffer_pixels / 5, 5)
-        
-        # Process large and small landmasses separately
-        large_lands = np.zeros_like(land_mask)
-        small_lands = np.zeros_like(land_mask)
-        
-        for i in range(1, num_features + 1):
-            if land_sizes[i] > small_island_threshold:
-                large_lands |= (labeled_lands == i)
-            else:
-                small_lands |= (labeled_lands == i)
-        
-        # Create structuring elements
-        main_structure = ndimage.iterate_structure(
-            ndimage.generate_binary_structure(2, 1),
-            buffer_pixels // 2
-        )
-        
-        small_structure = ndimage.iterate_structure(
-            ndimage.generate_binary_structure(2, 1),
-            max(1, buffer_pixels // 4)
-        )
-        
-        # Apply different buffer sizes
-        dilated_large = ndimage.binary_dilation(large_lands, structure=main_structure)
-        dilated_small = ndimage.binary_dilation(small_lands, structure=small_structure)
-        
-        # Combine results
-        combined_lands = dilated_large | dilated_small
-        final_mask = ~combined_lands
+        print("OpenCV not available, using scipy (slower)")
 
-    # Apply TSS after buffering if requested so they are carved out without extra dilation
+    if buffer_radius_px < 1:
+        print("  ⚠ Buffer radius < 1 px, skipping dilation")
+        final_mask = is_water.copy()
+    else:
+        if cv2 is not None:
+            t0 = time.time()
+            land_uint8 = land_mask.astype(np.uint8)
+            ksize = 2 * buffer_radius_px + 1
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
+            dilated = cv2.dilate(land_uint8, kernel, iterations=1)
+            final_mask = ~ (dilated.astype(bool))
+            print(f"  ✓ Dilation completed in {time.time() - t0:.2f}s (kernel {ksize}x{ksize})")
+        else:
+            # Build a circular (disk) footprint for SciPy dilation
+            r = int(buffer_radius_px)
+            yy, xx = np.ogrid[-r:r+1, -r:r+1]
+            disk = (xx*xx + yy*yy) <= r*r
+            dilated = ndimage.binary_dilation(land_mask, structure=disk)
+            final_mask = ~dilated
+
+    # Apply TSS after buffering (optional carve-out)
     if tss_geojson_path and not apply_tss_before_buffer:
         try:
-            post_tss_start = time.time()
+            t0 = time.time()
             final_mask = _apply_tss_to_mask(
                 final_mask,
                 tss_geojson_path,
@@ -315,22 +184,17 @@ def create_buffered_water_mask(
                 lane_pixel_width=lane_pixel_width,
                 make_land=True,
             )
-            print(f"Applied TSS lanes/zones to mask (post-buffer) in {time.time() - post_tss_start:.2f}s")
+            print(f"Applied TSS (post-buffer) in {time.time() - t0:.2f}s")
         except Exception as e:
             print(f"Warning: Failed to apply TSS lanes after buffering: {e}")
-    
-    total_time = time.time() - start_time
-    print(f"✓ Buffered water mask created in {total_time:.2f}s")
 
-    # Save to cache
+    print(f"✓ Buffered water mask created in {time.time() - start_time:.2f}s")
     try:
-        save_start = time.time()
         np.save(cache_file, final_mask)
-        print(f"Cached buffered water mask saved to {cache_file} in {time.time() - save_start:.2f}s")
+        print(f"Cached buffered water mask saved to {cache_file}")
     except Exception as e:
         print(f"Warning: Could not save cache file: {e}")
-    
-    return final_mask  # Return the water mask
+    return final_mask
 
 
 def preserve_critical_channels(is_water, critical_regions):
@@ -460,6 +324,8 @@ def _apply_tss_to_mask(
         if not coords:
             skipped += 1
             return
+        # Ensure grid dimensions are available for all branches
+        grid_h, grid_w = is_water.shape
         try:
             if gtype == "LineString":
                 closed_loop = False
@@ -471,7 +337,6 @@ def _apply_tss_to_mask(
                 if closed_loop:
                     try:
                         from PIL import Image, ImageDraw
-                        grid_h, grid_w = is_water.shape
                         img = Image.new("1", (grid_w, grid_h), 0)
                         draw = ImageDraw.Draw(img, "1")
                         poly_xy = [to_pixel(lon, lat) for lon, lat in coords]
@@ -522,7 +387,6 @@ def _apply_tss_to_mask(
             elif gtype in ("Polygon", "MultiPolygon"):
                 try:
                     from PIL import Image, ImageDraw
-                    grid_h, grid_w = is_water.shape
                     poly_img = Image.new("1", (grid_w, grid_h), 0)
                     draw = ImageDraw.Draw(poly_img, "1")
 

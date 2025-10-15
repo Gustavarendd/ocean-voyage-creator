@@ -2,10 +2,12 @@
 
 from config import LAT_MIN, LAT_MAX, LON_MIN, LON_MAX, IMAGE_WIDTH, IMAGE_HEIGHT
 try:
-    from core.initialization import get_active_bounds
+    from core.initialization import get_active_bounds, get_active_dimensions
 except Exception:
     def get_active_bounds():  # fallback
         return LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
+    def get_active_dimensions():  # fallback
+        return IMAGE_WIDTH, IMAGE_HEIGHT
     
 
 
@@ -35,6 +37,7 @@ def latlon_to_pixel(lat, lon, warn=True):
     
     # For longitude, ensure we handle dateline crossing by normalizing the longitude
     lat_min, lat_max, lon_min, lon_max = get_active_bounds()
+    width, height = get_active_dimensions()
 
     normalized_lon = lon
     # Keep simple normalization relative to global +-180 for safety
@@ -43,16 +46,17 @@ def latlon_to_pixel(lat, lon, warn=True):
     elif normalized_lon < -180:
         normalized_lon += 360
 
-    x = int((normalized_lon - lon_min) / (lon_max - lon_min) * IMAGE_WIDTH)
-    y = int((lat_max - lat) / (lat_max - lat_min) * IMAGE_HEIGHT)
+    x = int((normalized_lon - lon_min) / (lon_max - lon_min) * width)
+    y = int((lat_max - lat) / (lat_max - lat_min) * height)
     return x, y
 
 def pixel_to_latlon(x, y):
     """Convert pixel coordinates to latitude/longitude."""
     lat_min, lat_max, lon_min, lon_max = get_active_bounds()
+    width, height = get_active_dimensions()
 
-    lon = lon_min + x / IMAGE_WIDTH * (lon_max - lon_min)
-    lat = lat_max - y / IMAGE_HEIGHT * (lat_max - lat_min)
+    lon = lon_min + x / width * (lon_max - lon_min)
+    lat = lat_max - y / height * (lat_max - lat_min)
     
     # Normalize longitude to be in the range [-180, 180]
     if lon > 180:
@@ -61,3 +65,5 @@ def pixel_to_latlon(x, y):
         lon += 360
     
     return lat, lon
+
+

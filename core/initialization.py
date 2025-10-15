@@ -6,11 +6,27 @@ import os
 import re
 from config import *
 
-# Globals to communicate active cropped bounds
+# Globals to communicate active cropped bounds and dimensions
 ACTIVE_LAT_MIN = LAT_MIN
 ACTIVE_LAT_MAX = LAT_MAX
 ACTIVE_LON_MIN = LON_MIN
 ACTIVE_LON_MAX = LON_MAX
+ACTIVE_WIDTH = IMAGE_WIDTH
+ACTIVE_HEIGHT = IMAGE_HEIGHT
+
+def set_active_bounds(lat_min, lat_max, lon_min, lon_max, width, height):
+    """Set the active bounds and dimensions for coordinate conversions."""
+    global ACTIVE_LAT_MIN, ACTIVE_LAT_MAX, ACTIVE_LON_MIN, ACTIVE_LON_MAX, ACTIVE_WIDTH, ACTIVE_HEIGHT
+    ACTIVE_LAT_MIN = lat_min
+    ACTIVE_LAT_MAX = lat_max
+    ACTIVE_LON_MIN = lon_min
+    ACTIVE_LON_MAX = lon_max
+    ACTIVE_WIDTH = width
+    ACTIVE_HEIGHT = height
+
+def get_active_dimensions():
+    """Return the active image dimensions."""
+    return ACTIVE_WIDTH, ACTIVE_HEIGHT
 
 def load_and_process_image(max_lat, min_lat, max_lon, min_lon):
     land_mask_path = "./images/land_mask_90N_90S_21600x10800.png"

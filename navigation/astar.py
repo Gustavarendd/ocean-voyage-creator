@@ -25,7 +25,9 @@ from .tss import get_tss_waypoints_near_position
 class AStar:
     def __init__(self, buffered_water, tss_preference=True, tss_cost_factor=1.0, tss_mask=None, tss_vecs=None,
                  no_go_mask=None, pixel_radius: int | None = None, exploration_angles: int | None = None, max_expansions: int | None = None,
-                 heuristic_weight: float = 1.2, disable_pruning: bool = True, use_numpy_core: bool = True):
+                 heuristic_weight: float = 1.2, disable_pruning: bool = True, use_numpy_core: bool = True,
+                 tss_lane_index=None, tss_snap_radius_km: float = 10.0, tss_bearing_tolerance: float = 45.0,
+                 tss_lane_snap_enabled: bool = False):
         # Core inputs & preferences
         self.buffered_water = buffered_water
         self.height, self.width = buffered_water.shape
@@ -42,6 +44,23 @@ class AStar:
         self.heuristic_weight = max(0.1, heuristic_weight)
         self.disable_pruning = disable_pruning
         self.use_numpy_core = use_numpy_core
+
+        # TSS lane snapping configuration
+        self.tss_lane_snap_enabled = tss_lane_snap_enabled
+        if tss_lane_index is not None and len(tss_lane_index) == 3:
+            self.tss_entry_tree = tss_lane_index[0]
+            self.tss_exit_tree = tss_lane_index[1]
+            self.tss_lane_data = tss_lane_index[2]
+        else:
+            self.tss_entry_tree = None
+            self.tss_exit_tree = None
+            self.tss_lane_data = []
+        
+        self.tss_snap_radius_km = tss_snap_radius_km
+        self.tss_bearing_tolerance = tss_bearing_tolerance
+        self.tss_snap_cache = {}  # Cache for lane queries at each position
+        self.tss_lane_entry_map = {}  # Map (x, y) -> lane_idx for lane entry points
+        self.tss_in_lane_nodes = set()  # Track nodes that are part of an active lane
 
         # Active geographic bounds (may be cropped)
         try:  # import inside to honor runtime cropping
@@ -91,6 +110,14 @@ class AStar:
         """Find shortest distance path between start and goal points."""
         import time
         t0 = time.time()
+        
+        # Store goal for lane waypoint injection
+        self.current_goal = goal
+        
+        # Clear lane tracking state
+        self.tss_in_lane_nodes.clear()
+        self.tss_lane_entry_map.clear()
+        self.tss_snap_cache.clear()
 
         if step_length is not None:
             if step_length < 1:
@@ -112,10 +139,10 @@ class AStar:
             if self.no_go_mask is not None:
                 sx, sy = start
                 gx, gy = goal
-                if self.no_go_mask[sy, sx]:
+                if self.no_go_mask[sy, sx] and self.tss_mask is not None and not self.tss_mask[sy, sx]:
                     print(f"A*: WARNING - start point {start} is in a no-go area!")
                     return None
-                if self.no_go_mask[gy, gx]:
+                if self.no_go_mask[gy, gx] and self.tss_mask is not None and not self.tss_mask[gy, gx]:
                     print(f"A*: WARNING - goal point {goal} is in a no-go area!")
                     return None
             
@@ -177,10 +204,10 @@ class AStar:
         
         # Check if start or goal are in no-go areas
         if self.no_go_mask is not None:
-            if self.no_go_mask[sy, sx]:
+            if self.no_go_mask[sy, sx] and self.tss_mask is not None and not self.tss_mask[sy, sx]:
                 print(f"A*: WARNING - start point ({sx}, {sy}) is in a no-go area!")
                 return None
-            if self.no_go_mask[gy, gx]:
+            if self.no_go_mask[gy, gx] and self.tss_mask is not None and not self.tss_mask[gy, gx]:
                 print(f"A*: WARNING - goal point ({gx}, {gy}) is in a no-go area!")
                 return None
         
@@ -191,11 +218,19 @@ class AStar:
 
         expansions = 0
         cos_mid = math.cos(self.mid_lat_rad)
+        start_wp = (sx, sy)  
 
         while open_set:
             _, cx, cy = heapq.heappop(open_set)
+
+          
+            
+            
+
+            # Already processed
             if self._closed[cy, cx]:
                 continue
+            
             if (cx, cy) == (gx, gy):
                 dt = time.time() - t0
                 print(f"A*: reached goal. expansions={expansions} elapsed={dt:.2f}s")
@@ -206,7 +241,16 @@ class AStar:
                 print(f"A*: max_expansions {self.max_expansions} reached, partial path returned")
                 return self._reconstruct_path_arrays(start, (cx, cy))
 
-            for nx, ny in self._get_neighbors((cx, cy), goal):
+            # Check if this node is a TSS lane entry point - if so, inject waypoints
+            if (cx, cy) in self.tss_lane_entry_map:
+                lane_idx = self.tss_lane_entry_map[(cx, cy)]
+                injected = self._inject_lane_waypoints(lane_idx, (cx, cy), open_set, cos_mid)
+                # Allow both lane waypoints and regular neighbors for flexibility
+
+            # Get neighbors
+            neighbors = list(self._get_neighbors((cx, cy), goal, prev_wp=start_wp))
+            
+            for nx, ny in neighbors:
                 if self._closed[ny, nx]:
                     continue
                 # Delta respecting wrap
@@ -233,16 +277,38 @@ class AStar:
         return None  # no path
 
     def _apply_tss_cost_modifier(self, current, neighbor, base_cost, goal=None):
-        """Apply cost modifier for TSS lanes to prefer routing through them."""
+        """Apply cost modifier for TSS lanes to prefer routing through them.
+        
+        This method handles:
+        1. Injected lane waypoints (marked as in-lane) get heavy discount
+        2. Lane entry points get heavy discount to encourage A* to choose them
+        3. Regular TSS mask-based routing with alignment checks
+        4. Transitions into/out of lanes
+        """
         # Skip if disabled
         if not self.tss_preference:
             return base_cost
 
-        # Fast path: precomputed mask + vector lookup
-        if self.tss_mask is not None and self.tss_vecs is not None:
-            cx, cy = current
-            nx, ny = neighbor
+        cx, cy = current
+        nx, ny = neighbor
 
+        
+        # Priority 1: Check if neighbor is a lane entry point - heavily incentivize!
+        if (nx, ny) in self.tss_lane_entry_map:
+            return base_cost * 0.1  # 90% discount to strongly prefer lane entries
+        
+        # Priority 2: Check if neighbor is an injected in-lane waypoint
+        # These get the best cost since they're pre-validated lane waypoints
+        if (nx, ny) in self.tss_in_lane_nodes:
+            # Moving along injected TSS lane waypoint
+            return base_cost * 0.3  # 70% discount for verified lane waypoints
+        
+        # Priority 3: Check if we're exiting from a lane entry (should be rare)
+        if (cx, cy) in self.tss_lane_entry_map:
+            return base_cost * 0.5  # Still give some discount
+
+        # Priority 4: Original mask-based TSS routing (for areas not in injected lanes)
+        if self.tss_mask is not None and self.tss_vecs is not None:
             if 0 <= ny < self.height and 0 <= nx < self.width and self.tss_mask[ny, nx]:
                 lane_vec = self.tss_vecs[ny, nx]
                 if not np.allclose(lane_vec, (0.0, 0.0)):
@@ -254,6 +320,8 @@ class AStar:
                         step_vec = np.array([dx/step_len, dy/step_len], dtype=np.float32)
 
                         # Heading toward goal (pixel space)
+                        goal_vec = None
+                        goal_len = 0
                         if goal is not None:
                             gdx = goal[0] - current[0]
                             gdy = goal[1] - current[1]
@@ -266,7 +334,7 @@ class AStar:
                         # Alignment = cosine similarity between lane dir and step dir and goal dir                        
                         # -1 = opposite, 0 = perpendicular, +1 = same direction
                         align = float(np.dot(step_vec, lane_vec))  # -1..1
-                        if goal is not None and goal_len > 0:
+                        if goal_vec is not None and goal_len > 0:
                             align = (align + float(np.dot(goal_vec, lane_vec))) / 2.0
                       
 
@@ -278,18 +346,19 @@ class AStar:
                         elif align > 0.5 and self.tss_mask[cy, cx]:      # ~ ≤ 60° difference
                             return base_cost* self.tss_cost_factor * 0.7
                         elif align > 0.0 and self.tss_mask[cy, cx]:    # ~ ≤ 90° difference
-                            return base_cost* self.tss_cost_factor * 0.7
+                            return base_cost* self.tss_cost_factor * 0.85
                             #return base_cost* self.tss_cost_factor * (1.0 - 0.5*(1-align))  # small bonus
                         elif align == 0.0 and self.tss_mask[cy, cx]:   # perpendicular
-                            return base_cost * 0.8
+                            return base_cost * 0.9
                         elif align > -0.2:     # ~ ≤ 100° difference
-                            return base_cost * 0.95
-                        elif align > -0.5:     # ~ ≤ 120° difference
                             return base_cost * 1
+                        elif align > -0.5:     # ~ ≤ 120° difference
+                            return base_cost * 1.5
                         else:                  # > 120° difference
                             return base_cost * 10  # heavily penalize going against lane
 
-            return base_cost
+
+            return base_cost  # No discount if not in TSS mask
 
 
     def _calculate_bearing(self, lat1, lon1, lat2, lon2):
@@ -307,13 +376,245 @@ class AStar:
         
         return bearing_deg
     
+    def _calculate_goal_bearing(self, current, goal):
+        """Calculate bearing from current position to goal (in degrees 0-360).
+
+        Args:
+            current: (x, y) pixel coordinates
+            goal: (x, y) pixel coordinates
+
+        Returns:
+            Bearing in degrees (0 = North, 90 = East) or None if invalid
+        """
+        try:
+            # Convert pixel coords to lat/lon
+            from utils.coordinates import pixel_to_latlon
+            
+            cx, cy = current
+            gx, gy = goal
+            
+            # Simple bounds check
+            if not (0 <= cx < self.width and 0 <= cy < self.height):
+                return None
+            if not (0 <= gx < self.width and 0 <= gy < self.height):
+                return None
+            
+            c_lat, c_lon = pixel_to_latlon(cx, cy)
+            g_lat, g_lon = pixel_to_latlon(gx, gy)
+            
+            return self._calculate_bearing(c_lat, c_lon, g_lat, g_lon)
+        except Exception:
+            return None
+    
+    def _is_bearing_aligned(self, bearing1, bearing2, tolerance_deg=None):
+        """Check if two bearings are aligned within tolerance.
+
+        Args:
+            bearing1: First bearing in degrees (0-360)
+            bearing2: Second bearing in degrees (0-360)
+            tolerance_deg: Maximum difference in degrees (default: use self.tss_bearing_tolerance)
+
+        Returns:
+            True if bearings are within tolerance, False otherwise
+        """
+        if bearing1 is None or bearing2 is None:
+            return False
+        
+        if tolerance_deg is None:
+            tolerance_deg = self.tss_bearing_tolerance
+        
+        # Calculate angular difference, accounting for 360/0 wrap
+        diff = abs(bearing1 - bearing2)
+        if diff > 180:
+            diff = 360 - diff
+        
+        return diff <= tolerance_deg
+    
+    def _find_nearby_lane_entries(self, position, goal, prev_point=None):
+        """Find TSS lane entries near current position that align with goal direction.
+
+        Args:
+            position: (x, y) pixel coordinates
+            goal: (x, y) pixel coordinates for goal
+
+        Returns:
+            List of (lane_index, distance_km) tuples for aligned lanes, sorted by distance
+        """
+        if not self.tss_lane_snap_enabled or self.tss_entry_tree is None:
+            return []
+        
+        # Check cache first
+        cache_key = (position, goal)
+        if cache_key in self.tss_snap_cache:
+            return self.tss_snap_cache[cache_key]
+        
+        try:
+            from utils.coordinates import pixel_to_latlon
+            from utils.distance import nm_distance
+            
+            px, py = position
+            if not (0 <= px < self.width and 0 <= py < self.height):
+                return []
+            
+            # Convert position to lat/lon
+            pos_lat, pos_lon = pixel_to_latlon(px, py)
+            
+            # Calculate goal bearing
+            goal_bearing = self._calculate_goal_bearing(position, goal)
+            if goal_bearing is None:
+                return []
+            
+            # Calculate previous bearing if available
+            if prev_point is not None:
+                prev_bearing = self._calculate_goal_bearing(prev_point, position)
+                if prev_bearing is not None:
+                    # Average with goal bearing for smoother transitions
+                    
+                    goal_bearing = self._mean_bearing(goal_bearing, prev_bearing)
+            
+            # Query KD-tree for nearby lane entries
+            # Convert km to degrees (approximate: 1 deg ~ 111 km)
+            search_radius_deg = self.tss_snap_radius_km / 111.0
+            
+            # Query returns indices and distances
+            indices = self.tss_entry_tree.query_ball_point(
+                [pos_lat, pos_lon], 
+                r=search_radius_deg
+            )
+            
+            if not indices:
+                self.tss_snap_cache[cache_key] = []
+                return []
+            
+            # Filter by bearing alignment and calculate actual distances
+            aligned_lanes = []
+            for idx in indices:
+                lane = self.tss_lane_data[idx]
+                lane_bearing = lane['bearing']
+                
+                is_aligned = self._is_bearing_aligned(goal_bearing, lane_bearing)
+                
+                if is_aligned:
+                    # Calculate actual distance
+                    entry_lat, entry_lon = lane['entry']
+                    dist_nm = nm_distance(pos_lat, pos_lon, entry_lat, entry_lon)
+                    dist_km = dist_nm * 1.852
+                    
+                    if dist_km <= self.tss_snap_radius_km:
+                    
+                        aligned_lanes.append((idx, dist_km))
+            
+            # Sort by distance
+            aligned_lanes.sort(key=lambda x: x[1])
+            
+            # Cache result
+            self.tss_snap_cache[cache_key] = aligned_lanes
+            
+            return aligned_lanes
+            
+        except Exception as e:
+            # Silently fail - don't break A* if lane query fails
+            return []
+    
+    def _inject_lane_waypoints(self, lane_idx, current_pos, open_set, cos_mid):
+        """Inject TSS lane waypoints into the A* search.
+
+        When a lane entry is detected, this method adds all lane waypoints
+        to the open set with low cost, creating a fast path through the lane.
+
+        Args:
+            lane_idx: Index of the lane in self.tss_lane_data
+            current_pos: (x, y) current pixel position (lane entry point)
+            open_set: Priority queue (heapq) to inject waypoints into
+            cos_mid: Cosine of mid-latitude for distance calculations
+
+        Returns:
+            Number of waypoints successfully injected
+        """
+        if not self.use_numpy_core:
+            return 0  # Only support numpy core for now
+        
+        try:
+            from utils.coordinates import latlon_to_pixel
+            
+            lane = self.tss_lane_data[lane_idx]
+            waypoints = lane['waypoints']  # List of [lat, lon]
+            
+            if len(waypoints) < 2:
+                return 0
+            
+            cx, cy = current_pos
+            current_g = self._g_score[cy, cx]
+            
+            injected = 0
+            prev_x, prev_y = cx, cy
+            
+            # Inject waypoints sequentially along the lane
+            for i, (wp_lat, wp_lon) in enumerate(waypoints[1:], 1):  # Skip first (entry)
+                try:
+                    wp_x, wp_y = latlon_to_pixel(wp_lat, wp_lon, warn=False)
+                    
+                    # Validate waypoint
+                    if not (0 <= wp_x < self.width and 0 <= wp_y < self.height):
+                        continue
+                    if not self.buffered_water[wp_y, wp_x]:
+                        continue
+                    if self.no_go_mask is not None and self.no_go_mask[wp_y, wp_x] and self.tss_mask is not None and not self.tss_mask[wp_y, wp_x]:
+                        continue
+                    
+                    # Calculate cost from previous waypoint
+                    dx_px = wp_x - prev_x
+                    dy_px = wp_y - prev_y
+                    if self.wrap_longitude:
+                        dx1 = wp_x - prev_x
+                        dx2 = wp_x - prev_x - self.width
+                        dx3 = wp_x - prev_x + self.width
+                        dx_px = min([dx1, dx2, dx3], key=abs)
+                    
+                    dlat_deg = dy_px * self.dlat_per_px
+                    dlon_deg = dx_px * self.dlon_per_px
+                    segment_dist = math.hypot(dlat_deg, dlon_deg * cos_mid)
+                    
+                    # Apply heavy discount for in-lane movement
+                    lane_cost_factor = 0.3  # 70% discount for using TSS lane
+                    segment_cost = segment_dist * lane_cost_factor
+                    
+                    tentative_g = current_g + segment_cost * (i)  # Accumulate cost
+                    
+                    # Only inject if this is a better path
+                    if tentative_g < self._g_score[wp_y, wp_x]:
+                        self._g_score[wp_y, wp_x] = tentative_g
+                        self._parent_x[wp_y, wp_x] = prev_x
+                        self._parent_y[wp_y, wp_x] = prev_y
+                        
+                        # Mark as in-lane node
+                        self.tss_in_lane_nodes.add((wp_x, wp_y))
+                        
+                        # Add to open set with heuristic
+                        f = tentative_g + self.heuristic_weight * self._heuristic((wp_x, wp_y), self.current_goal)
+                        heapq.heappush(open_set, (f, wp_x, wp_y))
+                        
+                        injected += 1
+                        prev_x, prev_y = wp_x, wp_y
+                    
+                except Exception:
+                    continue
+            
+            return injected
+            
+        except Exception as e:
+            return 0
+    
     
 
-    def _get_neighbors(self, point, goal=None, max_radius=15, oversample=1.0):
+    def _get_neighbors(self, point, goal=None, max_radius=15, oversample=1.0, prev_wp=None):
         """
         Return neighbor pixels on the *smallest* radius ring that contains any valid neighbor.
         Grows radius outward (1 px at a time) until at least one neighbor is found,
         then returns only those neighbors from that ring.
+
+        TSS Lane Snapping: If enabled, checks for nearby aligned TSS lane entries.
+        When a suitable lane is found, returns lane entry point as a high-priority neighbor.
 
         Args:
             point: (x, y) pixel
@@ -321,10 +622,58 @@ class AStar:
             max_radius: optional hard cap (defaults to image diagonal)
             oversample: multiplier for angular sampling density as radius grows
         """
+        # Debug lane snapping status ONCE (optional - can be removed in production)
+        if not hasattr(self, '_logged_snap_status'):
+            self._logged_snap_status = True
+            if self.tss_lane_snap_enabled:
+                print(f"TSS lane snapping enabled: {len(self.tss_lane_data) if self.tss_lane_data else 0} lanes indexed")
+        
+        # Check for TSS lane snapping opportunity
+        if self.tss_lane_snap_enabled and goal is not None:
+
+            # get previously wp and calculate bearing to current point
+
+
+            nearby_lanes = self._find_nearby_lane_entries(point, goal, prev_point=prev_wp)
+            if nearby_lanes:
+                # Found aligned lane(s) - mark entry point and let main loop handle injection
+                lane_neighbors = []
+                for lane_idx, dist_km in nearby_lanes[:1]:  # Use closest lane
+                    lane = self.tss_lane_data[lane_idx]
+                    # Convert lane entry to pixel coordinates
+                    try:
+                        from utils.coordinates import latlon_to_pixel
+                        entry_lat, entry_lon = lane['entry']
+                        entry_x, entry_y = latlon_to_pixel(entry_lat, entry_lon, warn=False)
+                        
+                        # Verify entry point is valid (water, in bounds, not no-go)
+                        # Also skip if entry point is the current position (already there!)
+                        if (entry_x, entry_y) == point:
+                            continue
+                        
+                        # Skip if entry has already been visited (in closed set)
+                        if self._closed[entry_y, entry_x]:
+                            continue
+                        
+                        if (0 <= entry_x < self.width and 0 <= entry_y < self.height and
+                            self.buffered_water[entry_y, entry_x]):
+                            
+                            if (self.no_go_mask is None or not self.no_go_mask[entry_y, entry_x]) or (self.tss_mask is None or self.tss_mask[entry_y, entry_x]):
+                                # Store lane index for this entry point
+                                self.tss_lane_entry_map[(entry_x, entry_y)] = lane_idx
+                                lane_neighbors.append((entry_x, entry_y))
+                    except Exception as e:
+                        pass
+                
+                if lane_neighbors:
+                    # Return both lane entry and regular neighbors
+                    # This gives A* a choice but biases toward the lane
+                    return lane_neighbors
+        
         width, height = self.width, self.height
         start_radius = max(1, int(round(self.pixel_radius)))
 
-        close_to_land, pixel_dist = self.is_land_close_to_position(point, check_radius=20)
+        close_to_land, pixel_dist = self.position_close_to_land(point, check_radius=start_radius)
 
 
         if close_to_land and pixel_dist is not None and pixel_dist < start_radius:
@@ -351,7 +700,12 @@ class AStar:
                 max_angle = 120 if distg < 80 else 100
                 dir_cos_min = math.cos(math.radians(max_angle))
 
-        r = start_radius
+        px, py = point
+        if self.tss_mask is not None and self.tss_mask[py, px]:
+            # In TSS lane - use full radius for max flexibility
+            r = min(2, start_radius)
+        else:
+            r = start_radius
        
         # Retrieve or build ring offsets
         if r not in self._ring_cache:
@@ -397,7 +751,7 @@ class AStar:
 
             if 0 <= nx < width and 0 <= ny < height and (self.buffered_water[ny, nx] or (self.tss_mask is not None and self.tss_mask[ny, nx])):
                 # Skip if this pixel is marked as a no-go area
-                if self.no_go_mask is not None and self.no_go_mask[ny, nx]:
+                if self.no_go_mask is not None and self.no_go_mask[ny, nx] and (self.tss_mask is None or not self.tss_mask[ny, nx]):
                     continue
                 if self.check_between_wps(point, (nx, ny)):
                     continue  # land in between
@@ -458,6 +812,7 @@ class AStar:
             path.append((px, py))
             cx, cy = px, py
         path.reverse()
+        print(f"A*: path length {len(path)}")
         return path
     
 
@@ -578,3 +933,14 @@ class AStar:
                 pixel_dist = int(np.min(dists))
                 return False, pixel_dist
         return False, None
+    
+    
+
+    def _mean_bearing(self, a, b):
+        # both in degrees
+        a_rad = math.radians(a)
+        b_rad = math.radians(b)
+        x = math.cos(a_rad) + math.cos(b_rad)
+        y = math.sin(a_rad) + math.sin(b_rad)
+        mean = math.degrees(math.atan2(y, x)) % 360
+        return mean

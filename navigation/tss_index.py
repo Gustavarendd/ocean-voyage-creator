@@ -31,12 +31,11 @@ except ImportError:
 
 from utils.coordinates import latlon_to_pixel, validate_coordinates
 try:
-    from core.initialization import (
-        ACTIVE_LAT_MIN, ACTIVE_LAT_MAX, ACTIVE_LON_MIN, ACTIVE_LON_MAX
-    )
-except Exception:
-    ACTIVE_LAT_MIN, ACTIVE_LAT_MAX = -90.0, 90.0
-    ACTIVE_LON_MIN, ACTIVE_LON_MAX = -180.0, 180.0
+    from core.initialization import get_active_bounds
+except ImportError:
+    def get_active_bounds():
+        from config import LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
+        return LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
 
 
 def _iter_tss_files(root_dir: str) -> Iterable[str]:
@@ -77,6 +76,36 @@ def _rasterize_linestring(pixel_points: list[Tuple[int, int]],
             if 0 <= y < h and 0 <= x < w:
                 mask[y, x] = True
                 vecs[y, x] = (u, v)
+
+
+def _extend_polyline(pixel_points: list[Tuple[int, int]], extend_px: int) -> list[Tuple[int, int]]:
+    """Extend a polyline at both ends by extend_px along the end segment directions.
+
+    If extend_px <= 0 or fewer than 2 points, returns the input unchanged.
+    """
+    if extend_px <= 0 or len(pixel_points) < 2:
+        return pixel_points
+    x0, y0 = pixel_points[0]
+    x1, y1 = pixel_points[1]
+    dx0, dy0 = x1 - x0, y1 - y0
+    len0 = (dx0 * dx0 + dy0 * dy0) ** 0.5
+    if len0 == 0:
+        start_ext = (x0, y0)
+    else:
+        ux0, uy0 = dx0 / len0, dy0 / len0
+        start_ext = (int(round(x0 - ux0 * extend_px)), int(round(y0 - uy0 * extend_px)))
+
+    xn1, yn1 = pixel_points[-1]
+    xn2, yn2 = pixel_points[-2]
+    dx1, dy1 = xn1 - xn2, yn1 - yn2
+    len1 = (dx1 * dx1 + dy1 * dy1) ** 0.5
+    if len1 == 0:
+        end_ext = (xn1, yn1)
+    else:
+        ux1, uy1 = dx1 / len1, dy1 / len1
+        end_ext = (int(round(xn1 + ux1 * extend_px)), int(round(yn1 + uy1 * extend_px)))
+
+    return [start_ext] + pixel_points + [end_ext]
 
 
 def _dilate(mask: np.ndarray, vecs: np.ndarray, radius: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -188,8 +217,8 @@ def _downsample_mask(mask_hi: np.ndarray, factor: int) -> np.ndarray:
     # Reshape and apply max pooling
     mask_reshaped = mask_trimmed.reshape(h_out, factor, w_out, factor)
     mask_out = mask_reshaped.any(axis=(1, 3))
-    
-    return mask_out
+    # Ensure return type is a boolean ndarray (not scalar numpy.bool_)
+    return mask_out.astype(bool)
 
 
 def _downsample_vectors(vecs_hi: np.ndarray, factor: int) -> np.ndarray:
@@ -223,7 +252,7 @@ def _downsample_vectors(vecs_hi: np.ndarray, factor: int) -> np.ndarray:
     return vecs_out.astype(np.float32)
 
 
-def _hash_tss_sources(files: list[str], dilation_radius: int, width: int, height: int) -> str:
+def _hash_tss_sources(files: list[str], dilation_radius: int, width: int, height: int, extend_pixels: int = 0) -> str:
     """Create a stable short hash representing all inputs that affect the mask.
 
     Hash components:
@@ -240,8 +269,9 @@ def _hash_tss_sources(files: list[str], dilation_radius: int, width: int, height
             meta_parts.append(f"{p}:{int(stat.st_mtime)}:{stat.st_size}")
         except OSError:
             meta_parts.append(f"{p}:missing:0")
-    meta_parts.append(f"W{width}H{height}D{dilation_radius}")
-    meta_parts.append(f"LAT{ACTIVE_LAT_MIN:.3f}_{ACTIVE_LAT_MAX:.3f}_LON{ACTIVE_LON_MIN:.3f}_{ACTIVE_LON_MAX:.3f}")
+    meta_parts.append(f"W{width}H{height}D{dilation_radius}E{extend_pixels}")
+    lat_min, lat_max, lon_min, lon_max = get_active_bounds()
+    meta_parts.append(f"LAT{lat_min:.3f}_{lat_max:.3f}_LON{lon_min:.3f}_{lon_max:.3f}")
     meta_blob = "|".join(meta_parts).encode()
     h.update(meta_blob)
     # Content hash (optional, only if few files & total size reasonable)
@@ -259,6 +289,7 @@ def build_tss_mask(
     image_height: int,
     root_dir: str = '.',
     dilation_radius: int = 2,
+    extend_pixels: int = 0,
     use_cache: bool = True,
     cache_dir: str = "cache",
     force_recompute: bool = False,
@@ -282,7 +313,7 @@ def build_tss_mask(
                 np.zeros((image_height, image_width, 2), dtype=np.float32))
 
     os.makedirs(cache_dir, exist_ok=True)
-    hash_id = _hash_tss_sources(files, dilation_radius, image_width, image_height)
+    hash_id = _hash_tss_sources(files, dilation_radius, image_width, image_height, extend_pixels)
     cache_path = os.path.join(cache_dir, f"tss_mask_{hash_id}.npz")
 
     if use_cache and not force_recompute and os.path.isfile(cache_path):
@@ -315,8 +346,9 @@ def build_tss_mask(
                 continue
             coords = geom.get('coordinates') or []
             pixel_coords = []
+            lat_min, lat_max, lon_min, lon_max = get_active_bounds()
             for lon, lat in coords:
-                if not (ACTIVE_LAT_MIN <= lat <= ACTIVE_LAT_MAX and ACTIVE_LON_MIN <= lon <= ACTIVE_LON_MAX):
+                if not (lat_min <= lat <= lat_max and lon_min <= lon <= lon_max):
                     continue
                 try:
                     x, y = latlon_to_pixel(lat, lon, warn=False)
@@ -325,7 +357,9 @@ def build_tss_mask(
                 if 0 <= x < image_width and 0 <= y < image_height:
                     pixel_coords.append((x, y))
             if len(pixel_coords) >= 2:
-                _rasterize_linestring(pixel_coords, mask, vecs)
+                # Optionally extend the polyline at both ends before rasterization
+                to_raster = _extend_polyline(pixel_coords, extend_pixels) if extend_pixels > 0 else pixel_coords
+                _rasterize_linestring(to_raster, mask, vecs)
                 count_features += 1
 
     if dilation_radius > 0:
@@ -349,6 +383,7 @@ def build_tss_combined_mask(
     dilation_radius: int = 2,
     no_go_dilation: int = 3,
     supersample_factor: int = 1,
+    extend_pixels: int = 0,
     use_cache: bool = True,
     cache_dir: str = "cache",
     force_recompute: bool = False,
@@ -395,10 +430,11 @@ def build_tss_combined_mask(
         file_meta = f"{geojson_path}:missing:0"
     
     h = hashlib.md5()
+    lat_min, lat_max, lon_min, lon_max = get_active_bounds()
     meta_parts = [
         file_meta,
-        f"W{image_width}H{image_height}D{dilation_radius}NGD{no_go_dilation}SS{supersample_factor}",
-        f"LAT{ACTIVE_LAT_MIN:.3f}_{ACTIVE_LAT_MAX:.3f}_LON{ACTIVE_LON_MIN:.3f}_{ACTIVE_LON_MAX:.3f}",
+        f"W{image_width}H{image_height}D{dilation_radius}NGD{no_go_dilation}SS{supersample_factor}EXT{extend_pixels}",
+        f"LAT{lat_min:.3f}_{lat_max:.3f}_LON{lon_min:.3f}_{lon_max:.3f}",
         "v3_supersample"  # Version marker for cache invalidation
     ]
     h.update("|".join(meta_parts).encode())
@@ -440,27 +476,36 @@ def build_tss_combined_mask(
     lanes_mask_hi = np.zeros((hi_height, hi_width), dtype=bool)
     lanes_vecs_hi = np.zeros((hi_height, hi_width, 2), dtype=np.float32)
     no_go_mask_hi = np.zeros((hi_height, hi_width), dtype=bool)
-    
+
     # Temporarily scale the coordinate conversion for higher resolution
     from utils.coordinates import latlon_to_pixel
-    import utils.coordinates as coords_module
-    
-    # Store original dimensions
-    original_width = getattr(coords_module, 'IMAGE_WIDTH', image_width)
-    original_height = getattr(coords_module, 'IMAGE_HEIGHT', image_height)
-    
-    # Temporarily override for supersampled space
-    coords_module.IMAGE_WIDTH = hi_width
-    coords_module.IMAGE_HEIGHT = hi_height
+    try:
+        from core.initialization import get_active_bounds as _gab, get_active_dimensions as _gad, set_active_bounds as _sab
+    except Exception:
+        _gab = None
+        _gad = None
+        _sab = None
+
+    # Store and override active dimensions via initialization API
+    old_bounds = None
+    old_dims = None
+    if _gab and _gad and _sab:
+        old_bounds = _gab()
+        old_dims = _gad()
+        lat_min_b, lat_max_b, lon_min_b, lon_max_b = old_bounds
+        # Set same geographic bounds but supersampled dimensions
+        _sab(lat_min_b, lat_max_b, lon_min_b, lon_max_b, hi_width, hi_height)
     
     try:
         with open(geojson_path, 'r') as f:
             data = json.load(f)
     except Exception as e:
         print(f"TSS combined mask: failed to load {geojson_path}: {e}")
-        # Restore original dimensions
-        coords_module.IMAGE_WIDTH = original_width
-        coords_module.IMAGE_HEIGHT = original_height
+        # Restore original active dimensions if we changed them
+        if _sab and old_bounds and old_dims:
+            lat_min_b, lat_max_b, lon_min_b, lon_max_b = old_bounds
+            w_old, h_old = old_dims
+            _sab(lat_min_b, lat_max_b, lon_min_b, lon_max_b, w_old, h_old)
         return (
             np.zeros((image_height, image_width), dtype=bool),
             np.zeros((image_height, image_width, 2), dtype=np.float32),
@@ -524,9 +569,10 @@ def build_tss_combined_mask(
                 continue
                 
             pixel_coords = []
+            lat_min, lat_max, lon_min, lon_max = get_active_bounds()
             for lon, lat in coords:
-                if not (ACTIVE_LAT_MIN <= lat <= ACTIVE_LAT_MAX and 
-                       ACTIVE_LON_MIN <= lon <= ACTIVE_LON_MAX):
+                if not (lat_min <= lat <= lat_max and 
+                       lon_min <= lon <= lon_max):
                     continue
                 try:
                     x, y = latlon_to_pixel(lat, lon, warn=False)
@@ -537,7 +583,10 @@ def build_tss_combined_mask(
             
             if len(pixel_coords) >= 2:
                 if is_separation_lane:
-                    _rasterize_linestring(pixel_coords, lanes_mask_hi, lanes_vecs_hi)
+                    # Extend lanes at both ends in hi-res pixels if requested
+                    extend_hi = int(extend_pixels) * int(supersample_factor)
+                    to_raster = _extend_polyline(pixel_coords, extend_hi) if extend_hi > 0 else pixel_coords
+                    _rasterize_linestring(to_raster, lanes_mask_hi, lanes_vecs_hi)
                     count_lanes += 1
                 else:
                     # Check if this is a closed polygon (start and end are the same)
@@ -552,8 +601,10 @@ def build_tss_combined_mask(
                         count_no_go += 1
 
     # Restore original dimensions
-    coords_module.IMAGE_WIDTH = original_width
-    coords_module.IMAGE_HEIGHT = original_height
+    if _sab and old_bounds and old_dims:
+        lat_min_b, lat_max_b, lon_min_b, lon_max_b = old_bounds
+        w_old, h_old = old_dims
+        _sab(lat_min_b, lat_max_b, lon_min_b, lon_max_b, w_old, h_old)
 
     # Apply dilation at high resolution
     if dilation_radius > 0:
@@ -599,4 +650,195 @@ def build_tss_combined_mask(
     return lanes_mask, lanes_vecs, no_go_mask
 
 
-__all__ = ["build_tss_mask", "build_tss_combined_mask"]
+def build_tss_lane_index(
+    root_dir: str = '.',
+    use_cache: bool = True,
+    cache_dir: str = "cache",
+    force_recompute: bool = False,
+):
+    """Build spatial index of TSS lane entry/exit points for fast A* lane snapping.
+
+    This extracts separation lanes from GeoJSON and creates a spatial index
+    (KDTree) for quick proximity queries. Each lane stores:
+    - Entry point (first coordinate)
+    - Exit point (last coordinate)
+    - All waypoints (intermediate coordinates)
+    - Direction vector (bearing)
+    - Properties from GeoJSON
+
+    Args:
+        root_dir: Project root containing TSS directory.
+        use_cache: Enable disk cache (default True).
+        cache_dir: Directory to store cache.
+        force_recompute: Ignore cache and rebuild.
+
+    Returns:
+        Tuple of (entry_tree, exit_tree, lane_data):
+        - entry_tree: scipy KDTree of lane entry points (lat, lon)
+        - exit_tree: scipy KDTree of lane exit points (lat, lon)
+        - lane_data: List of dicts with lane metadata
+    """
+    from scipy.spatial import KDTree
+    import pickle
+
+    geojson_path = os.path.join(root_dir, "TSS", "separation_lanes_with_direction.geojson")
+    
+    if not os.path.isfile(geojson_path):
+        print(f"TSS lane index: file not found: {geojson_path}")
+        return None, None, []
+
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    # Create hash for cache
+    try:
+        stat = os.stat(geojson_path)
+        file_meta = f"{geojson_path}:{int(stat.st_mtime)}:{stat.st_size}"
+    except OSError:
+        file_meta = f"{geojson_path}:missing:0"
+    
+    h = hashlib.md5()
+    meta_parts = [file_meta, "v1_lane_index"]
+    h.update("|".join(meta_parts).encode())
+    try:
+        with open(geojson_path, "rb") as f:
+            h.update(f.read())
+    except Exception:
+        pass
+    hash_id = h.hexdigest()[:16]
+    
+    cache_path = os.path.join(cache_dir, f"tss_lane_index_{hash_id}.pkl")
+
+    # Try loading from cache
+    if use_cache and not force_recompute and os.path.isfile(cache_path):
+        try:
+            with open(cache_path, 'rb') as f:
+                cached = pickle.load(f)
+                entry_tree = cached['entry_tree']
+                exit_tree = cached['exit_tree']
+                lane_data = cached['lane_data']
+                print(f"TSS lane index: loaded {len(lane_data)} lanes from cache")
+                return entry_tree, exit_tree, lane_data
+        except Exception as e:
+            print(f"TSS lane index: failed to load cache ({e}); recomputing...")
+
+    # Build from scratch
+    try:
+        with open(geojson_path, 'r') as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"TSS lane index: failed to load {geojson_path}: {e}")
+        return None, None, []
+
+    entry_points = []  # (lat, lon) of lane starts
+    exit_points = []   # (lat, lon) of lane ends
+    lane_data = []     # metadata for each lane
+
+    for feature in data.get('features', []):
+        geom = feature.get('geometry', {})
+        props = feature.get('properties', {})
+        
+        # Determine if this is a separation lane
+        seamark_type = None
+        if 'seamark:type' in props:
+            seamark_type = props['seamark:type']
+        elif 'parsed_other_tags' in props:
+            parsed = props['parsed_other_tags']
+            if isinstance(parsed, dict) and 'seamark:type' in parsed:
+                seamark_type = parsed['seamark:type']
+        elif 'other_tags' in props:
+            other_tags = props['other_tags']
+            if isinstance(other_tags, str) and 'seamark:type' in other_tags:
+                import re
+                match = re.search(r'"seamark:type"=>"([^"]+)"', other_tags)
+                if match:
+                    seamark_type = match.group(1)
+        
+        if seamark_type != "separation_lane":
+            continue
+        
+        # Only process LineString geometries
+        if geom.get('type') != 'LineString':
+            continue
+        
+        coords = geom.get('coordinates', [])
+        if len(coords) < 2:
+            continue
+        
+        # Extract waypoints as [lat, lon] (GeoJSON is [lon, lat], so we swap)
+        waypoints = [[lat, lon] for lon, lat in coords]
+        
+        # Entry and exit points
+        entry = waypoints[0]
+        exit_point = waypoints[-1]
+        
+        # Calculate bearing from first to last point
+        bearing = _calculate_bearing_latlon(entry[0], entry[1], exit_point[0], exit_point[1])
+        
+        # Store lane metadata
+        lane_info = {
+            'entry': entry,
+            'exit': exit_point,
+            'waypoints': waypoints,
+            'bearing': bearing,
+            'properties': props,
+            'num_waypoints': len(waypoints),
+        }
+        
+        entry_points.append(entry)
+        exit_points.append(exit_point)
+        lane_data.append(lane_info)
+    
+    if not entry_points:
+        print("TSS lane index: no separation lanes found")
+        return None, None, []
+    
+    # Build KD-trees for fast spatial queries
+    entry_tree = KDTree(entry_points)
+    exit_tree = KDTree(exit_points)
+    
+    print(f"TSS lane index: indexed {len(lane_data)} separation lanes")
+    
+    # Save to cache
+    if use_cache:
+        try:
+            with open(cache_path, 'wb') as f:
+                pickle.dump({
+                    'entry_tree': entry_tree,
+                    'exit_tree': exit_tree,
+                    'lane_data': lane_data,
+                    'built': str(datetime.utcnow())
+                }, f)
+            print(f"TSS lane index: cached to {cache_path}")
+        except Exception as e:
+            print(f"TSS lane index: warning could not write cache ({e})")
+    
+    return entry_tree, exit_tree, lane_data
+
+
+def _calculate_bearing_latlon(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate bearing between two lat/lon points in degrees (0-360).
+
+    Args:
+        lat1, lon1: Start point
+        lat2, lon2: End point
+
+    Returns:
+        Bearing in degrees (0 = North, 90 = East, etc.)
+    """
+    import math
+    
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lon_rad = math.radians(lon2 - lon1)
+    
+    y = math.sin(delta_lon_rad) * math.cos(lat2_rad)
+    x = (math.cos(lat1_rad) * math.sin(lat2_rad) - 
+         math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(delta_lon_rad))
+    
+    bearing_rad = math.atan2(y, x)
+    bearing_deg = (math.degrees(bearing_rad) + 360) % 360
+    
+    return bearing_deg
+
+
+__all__ = ["build_tss_mask", "build_tss_combined_mask", "build_tss_lane_index"]

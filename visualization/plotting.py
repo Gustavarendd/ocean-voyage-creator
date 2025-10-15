@@ -3,21 +3,52 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import json
+import matplotlib.patches as mpatches
+from matplotlib.colors import ListedColormap, BoundaryNorm
 from utils.coordinates import latlon_to_pixel
 try:
-    from core.initialization import (
-        ACTIVE_LAT_MIN, ACTIVE_LAT_MAX, ACTIVE_LON_MIN, ACTIVE_LON_MAX
-    )
+    from core.initialization import get_active_bounds
+except ImportError:
+    def get_active_bounds():
+        from config import LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
+        return LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
 except Exception:
     ACTIVE_LAT_MIN, ACTIVE_LAT_MAX = -90.0, 90.0
     ACTIVE_LON_MIN, ACTIVE_LON_MAX = -180.0, 180.0
 
-def plot_route_with_tss(buffered_water, route_path=None, tss_geojson_path=None, waypoints=None):
-    """Plot route with TSS lanes overlay on buffered water."""
+def plot_route_with_tss(buffered_water, route_path=None, tss_geojson_path=None, waypoints=None, tss_lanes_mask=None, no_go_mask=None):
+    """Plot route with TSS lanes and no-go areas overlay on buffered water.
+
+    Args:
+        buffered_water: 2D boolean array where True is water, False is land.
+        route_path: list of (x, y) pixel coordinates for the route.
+        tss_geojson_path: optional path to GeoJSON for lane lines (for reference).
+        waypoints: list of (x, y) pixel coordinates of original waypoints.
+        tss_lanes_mask: 2D boolean array where True marks TSS lanes to shade green.
+        no_go_mask: 2D boolean array where True marks no-go areas to shade red.
+    """
     fig, ax = plt.subplots(figsize=(16, 8))
     
     # Plot buffered water (water=white, land=black)
     ax.imshow(buffered_water, cmap='gray', alpha=0.7, aspect='equal')
+
+    # Overlay no-go areas in red (semi-transparent)
+    if no_go_mask is not None:
+        try:
+            cmap_nogo = ListedColormap(['none', 'red'])
+            norm_nogo = BoundaryNorm([0, 0.5, 1], cmap_nogo.N)
+            ax.imshow(no_go_mask.astype(int), cmap=cmap_nogo, norm=norm_nogo, alpha=0.35, aspect='equal')
+        except Exception:
+            pass
+
+    # Overlay TSS lanes areas in green (semi-transparent)
+    if tss_lanes_mask is not None:
+        try:
+            cmap_lanes = ListedColormap(['none', 'lime'])
+            norm_lanes = BoundaryNorm([0, 0.5, 1], cmap_lanes.N)
+            ax.imshow(tss_lanes_mask.astype(int), cmap=cmap_lanes, norm=norm_lanes, alpha=0.35, aspect='equal')
+        except Exception:
+            pass
     
     # Plot TSS lanes if provided
     if tss_geojson_path:
@@ -45,11 +76,20 @@ def plot_route_with_tss(buffered_water, route_path=None, tss_geojson_path=None, 
                        fontsize=10, color='yellow', weight='bold')
     
     ax.set_title("Ocean Route with Traffic Separation Schemes", fontsize=14)
-    ax.legend(loc='upper right')
+    # Build legend including overlays
+    handles, labels = ax.get_legend_handles_labels()
+    # Add proxies for overlays if provided
+    if tss_lanes_mask is not None:
+        handles.append(mpatches.Patch(color='lime', alpha=0.35, label='TSS Lanes'))
+    if no_go_mask is not None:
+        handles.append(mpatches.Patch(color='red', alpha=0.35, label='No-go areas'))
+    if handles:
+        ax.legend(handles=handles, loc='upper right')
     ax.set_xlabel("X (pixels)")
     ax.set_ylabel("Y (pixels)")
     # Draw active bounds lat/lon annotation for reference
-    ax.text(5, 15, f"Lat {ACTIVE_LAT_MIN} .. {ACTIVE_LAT_MAX}\nLon {ACTIVE_LON_MIN} .. {ACTIVE_LON_MAX}",
+    lat_min, lat_max, lon_min, lon_max = get_active_bounds()
+    ax.text(5, 15, f"Lat {lat_min} .. {lat_max}\nLon {lon_min} .. {lon_max}",
             fontsize=9, color='yellow', ha='left', va='top', bbox=dict(facecolor='black', alpha=0.3, pad=4))
     
     plt.tight_layout()
@@ -87,6 +127,7 @@ def plot_tss_lanes(ax, tss_geojson_path):
 def plot_lane_feature(ax, feature, color, label, show_label):
     """Plot a single TSS lane feature."""
     try:
+        lat_min, lat_max, lon_min, lon_max = get_active_bounds()
         geometry = feature['geometry']
         
         if geometry['type'] == 'LineString':
@@ -95,7 +136,7 @@ def plot_lane_feature(ax, feature, color, label, show_label):
             # Convert coordinates to pixels
             pixel_coords = []
             for lon, lat in coordinates:
-                if not (ACTIVE_LAT_MIN <= lat <= ACTIVE_LAT_MAX and ACTIVE_LON_MIN <= lon <= ACTIVE_LON_MAX):
+                if not (lat_min <= lat <= lat_max and lon_min <= lon <= lon_max):
                     continue
                 try:
                     x, y = latlon_to_pixel(lat, lon, warn=False)
