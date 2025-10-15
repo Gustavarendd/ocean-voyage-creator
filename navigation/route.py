@@ -88,8 +88,8 @@ class RouteCalculator:
             
             # Add the point just before the one that broke the line
             if j > i + 2:  # We found at least one intermediate point to skip
-                simplified_path.append(path[j - 1])
-                i = j - 1
+                simplified_path.append(path[j - 2])
+                i = j - 2
             else:
                 # No intermediate points could be skipped, move to next point
                 simplified_path.append(path[i + 1])
@@ -136,6 +136,7 @@ class RouteCalculator:
         print(f"Original path length: {len(complete_path)} points")
         simplified_path = self.simplify_straight_lines(complete_path)
         # simplified_path = complete_path
+
         print(f"Simplified path length: {len(simplified_path)} points")
         print(f"Removed {len(complete_path) - len(simplified_path)} redundant waypoints")
         

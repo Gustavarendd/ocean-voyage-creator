@@ -54,9 +54,9 @@ def main():
         IMAGE_WIDTH,
         IMAGE_HEIGHT,
         root_dir='.',
-        dilation_radius=4,        # Widen separation lanes slightly
-        no_go_dilation=3,         # Widen no-go areas for safety
-        supersample_factor=4,     # 2x higher resolution for TSS features
+        dilation_radius=0,        # Widen separation lanes slightly
+        no_go_dilation=0,         # Widen no-go areas for safety
+        supersample_factor=0,     # 2x higher resolution for TSS features
         extend_pixels=EXTEND_LANES_PX,
         use_cache=True,
         cache_dir='cache',
@@ -156,11 +156,11 @@ def main():
         tss_mask=lanes_mask,      # Use separation lanes mask
         tss_vecs=lanes_vecs,      # Use direction vectors for lanes
         no_go_mask=no_go_mask,    # Block areas to avoid
-        pixel_radius=pixel_radius * 5, # Search radius in pixels
+        pixel_radius=pixel_radius * 10, # Search radius in pixels
         exploration_angles=30,   # Wider search angles for better pathfinding
         heuristic_weight=1.0,       # Standard A* heuristic less makes better paths but slower
         max_expansions=None,       # No limit on expansions (can be set for performance)
-        tss_snap_radius_km=25,
+        tss_snap_radius_km=10,
         tss_lane_index=lane_index,    # Lane spatial index for snapping
         tss_bearing_tolerance=90.0,  # Wider tolerance for matching lane direction
 
