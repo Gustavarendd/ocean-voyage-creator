@@ -20,6 +20,9 @@ DX8 = np.array([1, 1, 0, -1, -1, -1, 0, 1], dtype=np.int8)
 DY8 = np.array([0, 1, 1, 1, 0, -1, -1, -1], dtype=np.int8)
 DIR_LOOKUP: dict[tuple[int, int], int] = {tuple(map(int, pair)): idx for idx, pair in enumerate(zip(DX8, DY8))}
 PARENT_SENTINEL = np.uint8(255)
+FLAG_WATER = np.uint8(1)
+FLAG_TSS = np.uint8(2)
+FLAG_FORBIDDEN = np.uint8(4)
 try:
     from core.initialization import ACTIVE_LON_MIN, ACTIVE_LON_MAX
 except Exception:
@@ -35,15 +38,17 @@ class AStar:
                  tss_lane_index=None, tss_snap_radius_km: float = 10.0, tss_bearing_tolerance: float = 45.0,
                  tss_lane_snap_enabled: bool = False):
         # Core inputs & preferences
-        self.buffered_water = buffered_water
-        self.height, self.width = buffered_water.shape
+        self.buffered_water = np.require(buffered_water, dtype=np.bool_, requirements=("C",))
+        self.height, self.width = self.buffered_water.shape
         self.tss_cache = {}
         self.tss_preference = tss_preference
         self.tss_cost_factor = tss_cost_factor
       
-        self.tss_mask = tss_mask
-        self.tss_vecs = tss_vecs
-        self.no_go_mask = no_go_mask  # Mask for areas to avoid (obstacles)
+        self.tss_mask = None if tss_mask is None else np.require(tss_mask, dtype=np.bool_, requirements=("C",))
+        self.tss_vecs = None if tss_vecs is None else np.require(tss_vecs, dtype=np.float32, requirements=("C",))
+        self.no_go_mask = None if no_go_mask is None else np.require(no_go_mask, dtype=np.bool_, requirements=("C",))
+        self._mask_flags = self._build_mask_flags(self.buffered_water, self.tss_mask, self.no_go_mask)
+        self._mask_flags.setflags(write=False)
         self.user_pixel_radius = pixel_radius
         self.user_exploration_angles = exploration_angles
         self.max_expansions = max_expansions
@@ -111,20 +116,40 @@ class AStar:
         # Caches
         self._ring_cache = {}
         self._dxdy_unit_cache = {}
+        self.last_stats = None
+        self._stats = None
 
         # Numpy structures (optional)
         if self.use_numpy_core:
-            self._g_score = np.full((self.height, self.width), np.inf, dtype=np.float32)
-            self._closed = np.zeros((self.height, self.width), dtype=np.bool_)
-            self._parent_dir = np.full((self.height, self.width), PARENT_SENTINEL, dtype=np.uint8)
-            self._parent_special: dict[tuple[int, int], tuple[int, int]] = {}
+            shape = (self.height, self.width)
+            self._g_score = np.full(shape, np.inf, dtype=np.float32, order="C")
+            self._closed = np.zeros(shape, dtype=np.bool_, order="C")
+            self._parent_dir = np.full(shape, PARENT_SENTINEL, dtype=np.uint8, order="C")
+            self._parent_long_dx = np.zeros(shape, dtype=np.int16, order="C")
+            self._parent_long_dy = np.zeros(shape, dtype=np.int16, order="C")
         else:
             self._g_score = None
+            self._parent_long_dx = None
+            self._parent_long_dy = None
 
     def find_path(self, start, goal, step_length = None, tss_cost_factor = None):
         """Find shortest distance path between start and goal points."""
         import time
         t0 = time.time()
+        stats = {
+            "mode": "numpy" if self.use_numpy_core else "python",
+            "pushes": 0,
+            "pops": 0,
+            "skipped_closed": 0,
+            "skipped_inconsistent": 0,
+            "expansions": 0,
+            "max_open": 0,
+            "goal_found": False,
+            "elapsed": 0.0,
+            "reason": "in_progress",
+        }
+        self.last_stats = stats
+        self._stats = stats if self.use_numpy_core else None
         
         # Store goal for lane waypoint injection
         self.current_goal = goal
@@ -150,35 +175,56 @@ class AStar:
 
         if not self.use_numpy_core:
             # Fallback to previous dict/set implementation if needed
-            # Check if start or goal are in no-go areas
-            if self.no_go_mask is not None:
-                sx, sy = start
-                gx, gy = goal
-                if self.no_go_mask[sy, sx] and self.tss_mask is not None and not self.tss_mask[sy, sx]:
-                    print(f"A*: WARNING - start point {start} is in a no-go area!")
-                    return None
-                if self.no_go_mask[gy, gx] and self.tss_mask is not None and not self.tss_mask[gy, gx]:
-                    print(f"A*: WARNING - goal point {goal} is in a no-go area!")
-                    return None
+            sx, sy = start
+            gx, gy = goal
+            start_flags = int(self._mask_flags[sy, sx]) if (0 <= sx < self.width and 0 <= sy < self.height) else 0
+            goal_flags = int(self._mask_flags[gy, gx]) if (0 <= gx < self.width and 0 <= gy < self.height) else 0
+            if (start_flags & FLAG_FORBIDDEN) and not (start_flags & FLAG_TSS):
+                print(f"A*: WARNING - start point {start} is in a no-go area!")
+                stats["reason"] = "invalid_start"
+                stats["elapsed"] = time.time() - t0
+                self.last_stats = stats
+                return None
+            if (goal_flags & FLAG_FORBIDDEN) and not (goal_flags & FLAG_TSS):
+                print(f"A*: WARNING - goal point {goal} is in a no-go area!")
+                stats["reason"] = "invalid_goal"
+                stats["elapsed"] = time.time() - t0
+                self.last_stats = stats
+                return None
             
             open_set = []
             heapq.heappush(open_set, (0, start))
+            stats["pushes"] += 1
+            stats["max_open"] = max(stats["max_open"], len(open_set))
             came_from = {}
             g_score = {start: 0.0}
             closed = set()
             expansions = 0
             while open_set:
                 _, current = heapq.heappop(open_set)
+                stats["pops"] += 1
                 if current in closed:
+                    stats["skipped_closed"] += 1
                     continue
                 if current == goal:
                     dt = time.time() - t0
+                    stats["goal_found"] = True
+                    stats["elapsed"] = dt
+                    stats["expansions"] = expansions
+                    stats["reason"] = "goal"
+                    stats["goal_cost"] = float(g_score[current])
+                    self.last_stats = stats
                     print(f"A*: reached goal. expansions={expansions} elapsed={dt:.2f}s")
                     return self._reconstruct_path_dict(came_from, start, goal)
                 closed.add(current)
                 expansions += 1
+                stats["expansions"] = expansions
                 if self.max_expansions and expansions > self.max_expansions:
                     print(f"A*: max_expansions {self.max_expansions} reached (fallback core)")
+                    stats["elapsed"] = time.time() - t0
+                    stats["reason"] = "max_expansions"
+                    stats["expansions"] = expansions
+                    self.last_stats = stats
                     return self._reconstruct_path_dict(came_from, start, current)
                 for neighbor in self._get_neighbors(current, goal):
                     if neighbor in closed:
@@ -200,32 +246,56 @@ class AStar:
                         came_from[neighbor] = current
                         g_score[neighbor] = tentative_g
                         f = tentative_g + self.heuristic_weight * self._heuristic(neighbor, goal)
+                        stats["pushes"] += 1
                         heapq.heappush(open_set, (f, neighbor))
+                        stats["max_open"] = max(stats["max_open"], len(open_set))
+            stats["elapsed"] = time.time() - t0
+            stats["reason"] = "exhausted"
+            stats["expansions"] = expansions
+            self.last_stats = stats
             return None
 
         # Optimized numpy core
         # Reset arrays (cheap) instead of reallocating
-        self._g_score.fill(np.inf)
+        self._g_score.fill(np.float32(np.inf))
         self._closed.fill(False)
         self._parent_dir.fill(PARENT_SENTINEL)
-        self._parent_special: dict[tuple[int, int], tuple[int, int]] = {}
+        self._parent_long_dx.fill(0)
+        self._parent_long_dy.fill(0)
         self._push_seq = 0
 
         sx, sy = start
         gx, gy = goal
         if not (0 <= sx < self.width and 0 <= sy < self.height):
+            stats["reason"] = "invalid_start"
+            stats["elapsed"] = time.time() - t0
+            self.last_stats = stats
+            self._stats = None
             return None
         if not (0 <= gx < self.width and 0 <= gy < self.height):
+            stats["reason"] = "invalid_goal"
+            stats["elapsed"] = time.time() - t0
+            self.last_stats = stats
+            self._stats = None
             return None
         
         # Check if start or goal are in no-go areas
-        if self.no_go_mask is not None:
-            if self.no_go_mask[sy, sx] and self.tss_mask is not None and not self.tss_mask[sy, sx]:
-                print(f"A*: WARNING - start point ({sx}, {sy}) is in a no-go area!")
-                return None
-            if self.no_go_mask[gy, gx] and self.tss_mask is not None and not self.tss_mask[gy, gx]:
-                print(f"A*: WARNING - goal point ({gx}, {gy}) is in a no-go area!")
-                return None
+        start_flags = int(self._mask_flags[sy, sx])
+        goal_flags = int(self._mask_flags[gy, gx])
+        if (start_flags & FLAG_FORBIDDEN) and not (start_flags & FLAG_TSS):
+            print(f"A*: WARNING - start point ({sx}, {sy}) is in a no-go area!")
+            stats["reason"] = "invalid_start"
+            stats["elapsed"] = time.time() - t0
+            self.last_stats = stats
+            self._stats = None
+            return None
+        if (goal_flags & FLAG_FORBIDDEN) and not (goal_flags & FLAG_TSS):
+            print(f"A*: WARNING - goal point ({gx}, {gy}) is in a no-go area!")
+            stats["reason"] = "invalid_goal"
+            stats["elapsed"] = time.time() - t0
+            self.last_stats = stats
+            self._stats = None
+            return None
         
         self._g_score[sy, sx] = 0.0
 
@@ -237,23 +307,39 @@ class AStar:
 
         while open_set:
             _, _, cx, cy, entry_g = heapq.heappop(open_set)
+            stats["pops"] += 1
 
             current_val = float(self._g_score[cy, cx])
             if entry_g > current_val + 1e-6:
+                stats["skipped_inconsistent"] += 1
                 continue
             if self._closed[cy, cx]:
+                stats["skipped_closed"] += 1
                 continue
 
             current_g = current_val
 
             if (cx, cy) == (gx, gy):
                 dt = time.time() - t0
+                stats["goal_found"] = True
+                stats["elapsed"] = dt
+                stats["expansions"] = expansions
+                stats["reason"] = "goal"
+                stats["goal_cost"] = float(current_g)
+                self.last_stats = stats
+                self._stats = None
                 print(f"A*: reached goal. expansions={expansions} elapsed={dt:.2f}s")
                 return self._reconstruct_path_arrays(start, goal)
             self._closed[cy, cx] = True
             expansions += 1
+            stats["expansions"] = expansions
             if self.max_expansions and expansions > self.max_expansions:
                 print(f"A*: max_expansions {self.max_expansions} reached, partial path returned")
+                stats["elapsed"] = time.time() - t0
+                stats["reason"] = "max_expansions"
+                stats["goal_cost"] = float(current_g)
+                self.last_stats = stats
+                self._stats = None
                 return self._reconstruct_path_arrays(start, (cx, cy))
 
             # Check if this node is a TSS lane entry point - if so, inject waypoints
@@ -280,12 +366,21 @@ class AStar:
                     f += self._bearing_bias((cx, cy), (nx, ny), goal)
                     self._push(open_set, f, nx, ny, tentative_g)
 
+        stats["elapsed"] = time.time() - t0
+        stats["reason"] = "exhausted"
+        stats["expansions"] = expansions
+        self.last_stats = stats
+        self._stats = None
         return None  # no path
 
     def _push(self, heap, f, x, y, g):
         """Push an entry into the open set with monotonic sequence for tie-breaking."""
         self._push_seq += 1
         heapq.heappush(heap, (f, self._push_seq, x, y, g))
+        if self._stats is not None:
+            self._stats["pushes"] += 1
+            if len(heap) > self._stats["max_open"]:
+                self._stats["max_open"] = len(heap)
 
     def _delta_x(self, x0, x1):
         dx = x1 - x0
@@ -297,6 +392,23 @@ class AStar:
                 dx += self.width
         return dx
 
+    def _build_mask_flags(self, water_mask, tss_mask, no_go_mask):
+        flags = np.zeros((self.height, self.width), dtype=np.uint8, order="C")
+        np.bitwise_or(flags, FLAG_WATER, out=flags, where=water_mask)
+        if tss_mask is not None:
+            np.bitwise_or(flags, FLAG_TSS, out=flags, where=tss_mask)
+        if no_go_mask is not None:
+            np.bitwise_or(flags, FLAG_FORBIDDEN, out=flags, where=no_go_mask)
+        return flags
+
+    def _is_navigable(self, x, y):
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return False
+        flags = int(self._mask_flags[y, x])
+        if (flags & FLAG_FORBIDDEN) and not (flags & FLAG_TSS):
+            return False
+        return (flags & (FLAG_WATER | FLAG_TSS)) != 0
+
     def _set_parent(self, child_x, child_y, parent_x, parent_y):
         dx = self._delta_x(parent_x, child_x)
         dy = child_y - parent_y
@@ -304,13 +416,12 @@ class AStar:
             dir_idx = DIR_LOOKUP.get((int(dx), int(dy)))
             if dir_idx is not None:
                 self._parent_dir[child_y, child_x] = np.uint8(dir_idx)
-                if hasattr(self, "_parent_special"):
-                    self._parent_special.pop((child_x, child_y), None)
+                self._parent_long_dx[child_y, child_x] = 0
+                self._parent_long_dy[child_y, child_x] = 0
                 return
-        # Fall back to explicit parent storage for long jumps
-        if hasattr(self, "_parent_special"):
-            self._parent_special[(child_x, child_y)] = (parent_x, parent_y)
         self._parent_dir[child_y, child_x] = PARENT_SENTINEL
+        self._parent_long_dx[child_y, child_x] = np.int16(dx)
+        self._parent_long_dy[child_y, child_x] = np.int16(dy)
 
     def _movement_cost_nm(self, cx, cy, nx, ny):
         lat1 = self._lat_rad_rows[cy]
@@ -389,10 +500,13 @@ class AStar:
             return base_cost * 0.5  # Still give some discount
 
         # Priority 4: Original mask-based TSS routing (for areas not in injected lanes)
-        if self.tss_mask is not None and self.tss_vecs is not None:
-            if 0 <= ny < self.height and 0 <= nx < self.width and self.tss_mask[ny, nx]:
-                lane_vec = self.tss_vecs[ny, nx]
-                if not np.allclose(lane_vec, (0.0, 0.0)):
+        if self.tss_vecs is not None:
+            if 0 <= ny < self.height and 0 <= nx < self.width:
+                lane_flags = int(self._mask_flags[ny, nx])
+                if lane_flags & FLAG_TSS:
+                    lane_vec = self.tss_vecs[ny, nx]
+                    if np.allclose(lane_vec, (0.0, 0.0)):
+                        return base_cost
                     # Ship step vector (pixel space)
                     dx = nx - current[0]
                     dy = ny - current[1]
@@ -420,26 +534,26 @@ class AStar:
                       
 
                         # If align > 0, we’re going with the lane; < 0 = against
-                        if align > 0.9 and self.tss_mask[cy, cx]:      # ~ ≤ 25° difference
+                        current_flags = int(self._mask_flags[cy, cx])
+                        if align > 0.9 and (current_flags & FLAG_TSS):      # ~ ≤ 25° difference
                             return base_cost * self.tss_cost_factor * 0.6
-                        elif align > 0.75 and self.tss_mask[cy, cx]:      # ~ ≤ 40° difference
+                        elif align > 0.75 and (current_flags & FLAG_TSS):      # ~ ≤ 40° difference
                             return base_cost* self.tss_cost_factor * 0.7
-                        elif align > 0.5 and self.tss_mask[cy, cx]:      # ~ ≤ 60° difference
+                        elif align > 0.5 and (current_flags & FLAG_TSS):      # ~ ≤ 60° difference
                             return base_cost* self.tss_cost_factor * 0.7
-                        elif align > 0.0 and self.tss_mask[cy, cx]:    # ~ ≤ 90° difference
+                        elif align > 0.0 and (current_flags & FLAG_TSS):    # ~ ≤ 90° difference
                             return base_cost* self.tss_cost_factor * 0.85
                             #return base_cost* self.tss_cost_factor * (1.0 - 0.5*(1-align))  # small bonus
-                        elif align == 0.0 and self.tss_mask[cy, cx]:   # perpendicular
+                        elif align == 0.0 and (current_flags & FLAG_TSS):   # perpendicular
                             return base_cost * 0.9
                         elif align > -0.2:     # ~ ≤ 100° difference
                             return base_cost * 1
                         elif align > -0.5:     # ~ ≤ 120° difference
                             return base_cost * 1.5
-                        else:                  # > 120° difference
+                        else:  # > 120° difference
                             return base_cost * 10  # heavily penalize going against lane
 
-
-            return base_cost  # No discount if not in TSS mask
+        return base_cost  # No discount if not in TSS mask
 
 
     def _calculate_bearing(self, lat1, lon1, lat2, lon2):
@@ -636,9 +750,10 @@ class AStar:
                     # Validate waypoint
                     if not (0 <= wp_x < self.width and 0 <= wp_y < self.height):
                         continue
-                    if not self.buffered_water[wp_y, wp_x]:
+                    flags = int(self._mask_flags[wp_y, wp_x])
+                    if (flags & (FLAG_WATER | FLAG_TSS)) == 0:
                         continue
-                    if self.no_go_mask is not None and self.no_go_mask[wp_y, wp_x] and self.tss_mask is not None and not self.tss_mask[wp_y, wp_x]:
+                    if (flags & FLAG_FORBIDDEN) and not (flags & FLAG_TSS):
                         continue
                     
                     # Calculate cost from previous waypoint
@@ -733,14 +848,11 @@ class AStar:
                         # Skip if entry has already been visited (in closed set)
                         if self._closed[entry_y, entry_x]:
                             continue
-                        
-                        if (0 <= entry_x < self.width and 0 <= entry_y < self.height and
-                            self.buffered_water[entry_y, entry_x]):
-                            
-                            if (self.no_go_mask is None or not self.no_go_mask[entry_y, entry_x]) or (self.tss_mask is None or self.tss_mask[entry_y, entry_x]):
-                                # Store lane index for this entry point
-                                self.tss_lane_entry_map[(entry_x, entry_y)] = lane_idx
-                                lane_neighbors.append((entry_x, entry_y))
+
+                        if self._is_navigable(entry_x, entry_y):
+                            # Store lane index for this entry point
+                            self.tss_lane_entry_map[(entry_x, entry_y)] = lane_idx
+                            lane_neighbors.append((entry_x, entry_y))
                     except Exception as e:
                         pass
                 
@@ -780,7 +892,7 @@ class AStar:
                 dir_cos_min = math.cos(math.radians(max_angle))
 
         px, py = point
-        if self.tss_mask is not None and self.tss_mask[py, px]:
+        if int(self._mask_flags[py, px]) & FLAG_TSS:
             # In TSS lane - use full radius for max flexibility
             r = min(2, start_radius)
         else:
@@ -828,9 +940,11 @@ class AStar:
                 nx = self._wrap_x(nx)
             # Check bounds, water availability, and no-go areas unless in a tss lane
 
-            if 0 <= nx < width and 0 <= ny < height and (self.buffered_water[ny, nx] or (self.tss_mask is not None and self.tss_mask[ny, nx])):
-                # Skip if this pixel is marked as a no-go area
-                if self.no_go_mask is not None and self.no_go_mask[ny, nx] and (self.tss_mask is None or not self.tss_mask[ny, nx]):
+            if 0 <= nx < width and 0 <= ny < height:
+                cell_flags = int(self._mask_flags[ny, nx])
+                if (cell_flags & (FLAG_WATER | FLAG_TSS)) == 0:
+                    continue
+                if (cell_flags & FLAG_FORBIDDEN) and not (cell_flags & FLAG_TSS):
                     continue
                 if self.check_between_wps(point, (nx, ny)):
                     continue  # land in between
@@ -905,10 +1019,14 @@ class AStar:
                 if self.wrap_longitude:
                     px = self._wrap_x(px)
             else:
-                parent = self._parent_special.get((cx, cy)) if hasattr(self, "_parent_special") else None
-                if parent is None:
+                dx_long = int(self._parent_long_dx[cy, cx])
+                dy_long = int(self._parent_long_dy[cy, cx])
+                if dx_long == 0 and dy_long == 0:
                     break
-                px, py = parent
+                px = cx - dx_long
+                py = cy - dy_long
+                if self.wrap_longitude:
+                    px = self._wrap_x(px)
             if not (0 <= px < self.width and 0 <= py < self.height):
                 break
             path.append((px, py))
@@ -938,10 +1056,11 @@ class AStar:
         while True:
             if not (0 <= x0 < self.width and 0 <= y0 < self.height):
                 return True  # out of bounds treated as land
-            if not self.buffered_water[y0, x0]:
+            flags = int(self._mask_flags[y0, x0])
+            if (flags & (FLAG_WATER | FLAG_TSS)) == 0:
                 return True  # hit land
-            # if self.no_go_mask is not None and self.no_go_mask[y0, x0]:
-            #     return True  # hit no-go area
+            if (flags & FLAG_FORBIDDEN) and not (flags & FLAG_TSS):
+                return True  # hit no-go area
             if (x0, y0) == (x1, y1):
                 break
             err2 = err * 2

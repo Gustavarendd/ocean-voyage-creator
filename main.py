@@ -20,7 +20,7 @@ def main():
     FORCE_RECOMPUTE = True  # Set to True to force recompute of cached data
     # Enable dynamic resolution based on route
     USE_DYNAMIC_RESOLUTION = True  # Set to False to use old method
-    PIXELS_PER_NM = 1  # 1 pixel = 4 nautical miles (lower res = faster A*)
+    PIXELS_PER_NM = 1  # Resolution for dynamic route mask
     ROUTE_PADDING_DEGREES = 10  # Padding around route
     
     if USE_DYNAMIC_RESOLUTION:
@@ -54,9 +54,9 @@ def main():
         IMAGE_WIDTH,
         IMAGE_HEIGHT,
         root_dir='.',
-        dilation_radius=0,        # Widen separation lanes slightly
+        dilation_radius=1,        # Widen separation lanes slightly
         no_go_dilation=0,         # Widen no-go areas for safety
-        supersample_factor=0,     # 2x higher resolution for TSS features
+        supersample_factor=2,     # 2x higher resolution for TSS features
         extend_pixels=EXTEND_LANES_PX,
         use_cache=True,
         cache_dir='cache',
@@ -156,13 +156,13 @@ def main():
         tss_mask=lanes_mask,      # Use separation lanes mask
         tss_vecs=lanes_vecs,      # Use direction vectors for lanes
         no_go_mask=no_go_mask,    # Block areas to avoid
-        pixel_radius=pixel_radius * 10, # Search radius in pixels
+        pixel_radius=pixel_radius * 5, # Search radius in pixels
         exploration_angles=30,   # Wider search angles for better pathfinding
         heuristic_weight=1.0,       # Standard A* heuristic less makes better paths but slower
         max_expansions=None,       # No limit on expansions (can be set for performance)
-        tss_snap_radius_km=10,
+        tss_snap_radius_km=10,  # Snap to TSS lanes within this radius (in km)
         tss_lane_index=lane_index,    # Lane spatial index for snapping
-        tss_bearing_tolerance=90.0,  # Wider tolerance for matching lane direction
+        tss_bearing_tolerance=60.0,  # Wider tolerance for matching lane direction
 
         tss_lane_snap_enabled=True
     )

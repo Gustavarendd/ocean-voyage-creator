@@ -99,9 +99,9 @@ def create_buffered_water_mask(
 
     cache_file = os.path.join(cache_dir, f"buffered_water_{cache_key}.npy")
     if not force_recompute and os.path.exists(cache_file):
-        print(f"Loading cached buffered water mask from {cache_file}")
+        print(f"Loading cached buffered water mask from {cache_file} (mmap)")
         try:
-            return np.load(cache_file)
+            return np.load(cache_file, mmap_mode="r")
         except Exception:
             print("Cache load failed; recomputing...")
 
@@ -119,6 +119,9 @@ def create_buffered_water_mask(
     pixels_per_nm = pixels_per_degree / 60.0
     buffer_radius_px = int(round(buffer_nm * pixels_per_nm))
     print(f"Coastal buffer: {buffer_nm} nm -> {buffer_radius_px} px (px/°={pixels_per_degree:.2f}, px/nm={pixels_per_nm:.2f})")
+
+    # Ensure source mask is contiguous bool for downstream SIMD-style ops
+    is_water = np.require(is_water, dtype=np.bool_, requirements=("C",))
 
     # Integrate TSS lanes (as water) if provided
     if tss_lanes is not None and tss_lanes.shape == is_water.shape:
@@ -162,7 +165,7 @@ def create_buffered_water_mask(
             ksize = 2 * buffer_radius_px + 1
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
             dilated = cv2.dilate(land_uint8, kernel, iterations=1)
-            final_mask = ~ (dilated.astype(bool))
+            final_mask = ~(dilated.astype(bool))
             print(f"  ✓ Dilation completed in {time.time() - t0:.2f}s (kernel {ksize}x{ksize})")
         else:
             # Build a circular (disk) footprint for SciPy dilation
@@ -188,9 +191,11 @@ def create_buffered_water_mask(
         except Exception as e:
             print(f"Warning: Failed to apply TSS lanes after buffering: {e}")
 
+    final_mask = np.require(final_mask, dtype=np.bool_, requirements=("C",))
+
     print(f"✓ Buffered water mask created in {time.time() - start_time:.2f}s")
     try:
-        np.save(cache_file, final_mask)
+        np.save(cache_file, final_mask, allow_pickle=False)
         print(f"Cached buffered water mask saved to {cache_file}")
     except Exception as e:
         print(f"Warning: Could not save cache file: {e}")

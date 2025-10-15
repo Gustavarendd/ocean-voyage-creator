@@ -319,8 +319,8 @@ def build_tss_mask(
     if use_cache and not force_recompute and os.path.isfile(cache_path):
         try:
             data = np.load(cache_path)
-            mask = data['mask']
-            vecs = data['vecs']
+            mask = np.require(data['mask'], dtype=np.bool_, requirements=("C",))
+            vecs = np.require(data['vecs'], dtype=np.float32, requirements=("C",))
             if mask.shape == (image_height, image_width) and vecs.shape == (image_height, image_width, 2):
                 print(f"TSS mask: loaded from cache {os.path.basename(cache_path)}")
                 return mask, vecs
@@ -458,7 +458,11 @@ def build_tss_combined_mask(
                 lanes_vecs.shape == (image_height, image_width, 2) and
                 no_go_mask.shape == (image_height, image_width)):
                 print(f"TSS combined mask: loaded from cache {os.path.basename(cache_path)}")
-                return lanes_mask, lanes_vecs, no_go_mask
+                return (
+                    np.require(lanes_mask, dtype=np.bool_, requirements=("C",)),
+                    np.require(lanes_vecs, dtype=np.float32, requirements=("C",)),
+                    np.require(no_go_mask, dtype=np.bool_, requirements=("C",)),
+                )
             else:
                 print("TSS combined mask: cache shape mismatch; recomputing...")
         except Exception as e:
@@ -647,7 +651,11 @@ def build_tss_combined_mask(
         except Exception as e:
             print(f"TSS combined mask: warning could not write cache ({e})")
     
-    return lanes_mask, lanes_vecs, no_go_mask
+    return (
+        np.require(lanes_mask, dtype=np.bool_, requirements=("C",)),
+        np.require(lanes_vecs, dtype=np.float32, requirements=("C",)),
+        np.require(no_go_mask, dtype=np.bool_, requirements=("C",)),
+    )
 
 
 def build_tss_lane_index(

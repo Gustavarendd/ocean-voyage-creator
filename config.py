@@ -25,7 +25,7 @@ COASTAL_BUFFER_NM = 1  # Coastal buffer in nautical miles
 
 # Route coordinates
 ROUTE_COORDS = [
-    # (54.1, 8.5), (36, -6),  # Hamburg -> Gibraltar 
+    (54.1, 8.5), (36, -6),  # Hamburg -> Gibraltar 
     # (32, 32), (36, -5),  # Hamburg -> Gibraltar
     # (36, -6), (54.1, 8.5),  # Gibraltar -> Hamburg
     # (32, 32), (54.1, 8.5),  # Port-Said -> Hamburg
@@ -38,7 +38,7 @@ ROUTE_COORDS = [
     # (60.0, 26.0), (51.5, -8.0) # St. Petersburg -> Cork
     # (51.5, -8.0), (60.0, 26.0) # Cork -> St. Petersburg
     # (51.5, -8.0), (40, -73.5),  # Cork -> New York
-    (34.5, -70.0), (51.0, -52.0),  # Bermuda -> St. John's 
+    # (34.5, -70.0), (51.0, -52.0),  # Bermuda -> St. John's 
    
     # (57.5, 11.2), (51.5, -8.0)  # Guthenburg -> Cork
     # (64.83805979142075, 39.87918005420811), (41.1, -9) # Murmansk -> Porto
